@@ -25,6 +25,11 @@ RESPONSE FORMAT — You MUST return ONLY valid JSON, no markdown, no code fences
 {
   "scenario": "syntax_error" | "logic_bug" | "all_correct",
   "verdict": "string — one sentence summary",
+  "failing_test": {
+    "input": "string — the failing test input",
+    "buggy_output": "string — what buggy code produced",
+    "correct_output": "string — what correct code produced"
+  } | null,
   "issues": [
     {
       "type": "syntax" | "runtime" | "logic" | "performance",
@@ -43,6 +48,8 @@ RESPONSE FORMAT — You MUST return ONLY valid JSON, no markdown, no code fences
 }
 
 RULES:
+- For logic_bug scenario: ALWAYS include failing_test with the first failing test case data. This is the MOST important part — show users exactly which input breaks their code.
+- For syntax_error or all_correct: set failing_test to null.
 - Maximum 5 issues. Only the most critical ones.
 - Maximum 3 improvements. Only if scenario is "all_correct".
 - Be SPECIFIC: "Line 12: uses < instead of <=" not "comparison operator might be wrong"

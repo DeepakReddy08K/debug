@@ -14,9 +14,16 @@ interface DiagnosisImprovement {
   description: string;
 }
 
+interface FailingTest {
+  input: string;
+  buggy_output: string;
+  correct_output: string;
+}
+
 interface DiagnosisResult {
   scenario: "syntax_error" | "logic_bug" | "all_correct";
   verdict: string;
+  failing_test: FailingTest | null;
   issues: DiagnosisIssue[];
   root_cause: string | null;
   improvements: DiagnosisImprovement[];
@@ -90,6 +97,29 @@ export default function DiagnosisDisplay({ diagnosis }: DiagnosisDisplayProps) {
               </div>
             </div>
           </div>
+
+          {/* Failing Test Case (logic bugs) */}
+          {diagnosis.failing_test && (
+            <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-3 space-y-2">
+              <span className="text-[10px] font-semibold uppercase text-yellow-400">Failing Test Case</span>
+              <div className="space-y-1.5">
+                <div>
+                  <span className="text-[10px] text-muted-foreground font-mono">INPUT</span>
+                  <pre className="text-xs text-foreground bg-secondary/40 rounded p-1.5 mt-0.5 overflow-x-auto whitespace-pre-wrap">{diagnosis.failing_test.input}</pre>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[10px] text-red-400 font-mono">YOUR OUTPUT</span>
+                    <pre className="text-xs text-red-300 bg-red-500/10 rounded p-1.5 mt-0.5 overflow-x-auto whitespace-pre-wrap">{diagnosis.failing_test.buggy_output}</pre>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-green-400 font-mono">EXPECTED</span>
+                    <pre className="text-xs text-green-300 bg-green-500/10 rounded p-1.5 mt-0.5 overflow-x-auto whitespace-pre-wrap">{diagnosis.failing_test.correct_output}</pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Root Cause (logic bugs only) */}
           {diagnosis.root_cause && (
