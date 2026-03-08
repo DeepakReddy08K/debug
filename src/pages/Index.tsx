@@ -127,8 +127,36 @@ const Index = () => {
 
       const { data: execData, error: execError } = await supabase.functions.invoke("execute-code", { body: { buggyCode: cleanBuggy, correctCode: cleanCorrect, language: detectedLanguage, testCases: storedTestCases, runId } });
       if (execError) throw new Error(execError.message || "Code execution failed");
-      if (execData?.retry_branch1) { toast.error(`Execution error: ${execData.message}. Restarting...`); setLoading(false); handleFindFailing(); return; }
       if (execData?.error) throw new Error(execData.error);
+
+      // Handle compilation errors — send to AI for diagnosis instead of retrying
+      if (execData?.compilation_error) {
+        toast.warning("Compilation error detected — getting AI diagnosis...");
+        setProgressStep("Step 5/5: AI diagnosing compilation error...");
+        const { data: diagData, error: diagError } = await supabase.functions.invoke("diagnose-bug", {
+          body: {
+            buggyCode: cleanBuggy, correctCode: cleanCorrect, language: detectedLanguage,
+            syntaxErrors: null, executionResults: execData, compilationError: execData.message, runId,
+          },
+        });
+        if (diagError) throw new Error(diagError.message || "Diagnosis failed");
+        if (diagData?.error) throw new Error(diagData.error);
+        if (diagData?.diagnosis?.scenario) {
+          setDiagnosis(diagData.diagnosis);
+        } else {
+          setDiagnosis({
+            scenario: "compilation_error",
+            verdict: `Compilation error: ${execData.message}`,
+            failing_test: null,
+            issues: [{ type: "compilation", line: null, description: execData.message, fix: "Check the code for syntax errors that the static checker missed." }],
+            root_cause: execData.message,
+            improvements: [],
+          });
+        }
+        setProgressStep("Diagnosis complete.");
+        toast.success("🔍 Diagnosis complete!");
+        return;
+      }
 
       setProgressStep("Step 5/5: AI diagnosing...");
       const { data: diagData, error: diagError } = await supabase.functions.invoke("diagnose-bug", { body: { buggyCode: cleanBuggy, correctCode: cleanCorrect, language: detectedLanguage, syntaxErrors: null, executionResults: execData, runId } });

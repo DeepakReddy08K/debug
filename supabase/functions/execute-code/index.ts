@@ -9,7 +9,6 @@ const corsHeaders = {
 
 const JUDGE0_URL = "https://ce.judge0.com";
 
-// Language mapping for Judge0 CE
 const LANGUAGE_MAP: Record<string, number> = {
   cpp: 54,
   "c++": 54,
@@ -123,13 +122,15 @@ serve(async (req) => {
     );
 
     if (validTestCases.length === 0) {
+      // Return 200 with error info so frontend can handle it
       return new Response(
         JSON.stringify({
-          error: "invalid_inputs",
+          compilation_error: true,
           message: "All test case inputs are empty or invalid. Re-analyze the problem.",
-          retry_branch1: true,
+          results: [],
+          summary: { total: 0, passing: 0, failing: 0, first_failing: null },
         }),
-        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -201,15 +202,22 @@ serve(async (req) => {
       });
     }
 
+    // Return compilation errors with 200 so frontend can route to diagnosis
     if (hasCompileError) {
+      const failingCases = executionResults.filter((r) => r.is_failing);
       return new Response(
         JSON.stringify({
-          error: "compilation_error",
+          compilation_error: true,
           message: compileErrorMsg,
-          retry_branch1: true,
           results: executionResults,
+          summary: {
+            total: executionResults.length,
+            passing: executionResults.length - failingCases.length,
+            failing: failingCases.length,
+            first_failing: failingCases.length > 0 ? failingCases[0] : null,
+          },
         }),
-        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 

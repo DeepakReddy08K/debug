@@ -9,21 +9,30 @@ const corsHeaders = {
 
 const SYSTEM_PROMPT = `You are a sharp, no-nonsense competitive programming debugger. You analyze code bugs and give DIRECT, CONCISE answers. No fluff.
 
-You will receive one of three scenarios:
+You will receive one of four scenarios:
 
 **Scenario A — Syntax/Runtime Errors (from Branch 2a):**
 You get syntax check results. List each error with its line number and a one-line fix. That's it.
 
-**Scenario B — Failing Test Cases (from Branch 2c/Judge0):**
+**Scenario B — Compilation Error (from Branch 3 - Judge0):**
+The code failed to compile when executed. You get the compiler error message and possibly partial results. Analyze the compilation error, identify the exact issue (wrong syntax, missing headers, etc.), and provide the fix. Do NOT just repeat the compiler message — explain what's wrong and how to fix it.
+
+**Scenario C — Failing Test Cases (from Branch 3 - Judge0):**
 You get buggy code, correct code, and a failing test case with both outputs. Identify the EXACT logical bug causing the mismatch. Be specific — point to the exact line/logic error.
 
-**Scenario C — All Tests Passed:**
-Both codes produce identical output on all test cases. Briefly confirm correctness and give 1-3 targeted improvement suggestions (performance, edge cases, code quality).
+**Scenario D — All Tests Passed:**
+Both codes produce identical output on all test cases. Do a CAREFUL line-by-line diff of the two codes. Look for:
+1. Any logical differences (different operators, different formulas, different conditions)
+2. Output format differences (endl vs \\n, spacing, etc.)
+3. Edge cases that might not be covered by the generated test cases
+4. Performance differences
+
+If the codes are truly identical in logic, confirm that. But if there ARE differences (even subtle ones like endl vs \\n), explain each difference and whether it could cause issues on a judge system.
 
 RESPONSE FORMAT — You MUST return ONLY valid JSON, no markdown, no code fences:
 
 {
-  "scenario": "syntax_error" | "logic_bug" | "all_correct",
+  "scenario": "syntax_error" | "logic_bug" | "all_correct" | "compilation_error",
   "verdict": "string — one sentence summary",
   "failing_test": {
     "input": "string — the failing test input",
@@ -32,13 +41,13 @@ RESPONSE FORMAT — You MUST return ONLY valid JSON, no markdown, no code fences
   } | null,
   "issues": [
     {
-      "type": "syntax" | "runtime" | "logic" | "performance",
+      "type": "syntax" | "runtime" | "logic" | "performance" | "compilation",
       "line": number or null,
       "description": "string — direct, specific, max 2 sentences",
       "fix": "string — exact fix, max 1-2 sentences"
     }
   ],
-  "root_cause": "string or null — for logic bugs only, the core reason in 1-2 sentences",
+  "root_cause": "string or null — for logic/compilation bugs, the core reason in 1-2 sentences",
   "improvements": [
     {
       "type": "performance" | "edge_case" | "style",
@@ -49,12 +58,14 @@ RESPONSE FORMAT — You MUST return ONLY valid JSON, no markdown, no code fences
 
 RULES:
 - For logic_bug scenario: ALWAYS include failing_test with the first failing test case data. This is the MOST important part — show users exactly which input breaks their code.
+- For compilation_error: set failing_test to null, list the compilation issues in issues array with type "compilation".
 - For syntax_error or all_correct: set failing_test to null.
 - Maximum 5 issues. Only the most critical ones.
-- Maximum 3 improvements. Only if scenario is "all_correct".
+- Maximum 3 improvements.
 - Be SPECIFIC: "Line 12: uses < instead of <=" not "comparison operator might be wrong"
 - No generic advice. Every point must reference actual code.
-- For logic bugs: trace through the failing input step-by-step mentally, then explain the divergence point.`;
+- For logic bugs: trace through the failing input step-by-step mentally, then explain the divergence point.
+- For all_correct: list ALL code differences you find between buggy and correct code, even minor ones like endl vs \\n. Explain whether each could cause issues.`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -66,8 +77,9 @@ serve(async (req) => {
       buggyCode,
       correctCode,
       language,
-      syntaxErrors,    // from Branch 2a (if has_errors)
-      executionResults, // from Branch 2c (Judge0 results)
+      syntaxErrors,
+      executionResults,
+      compilationError,  // new field for compilation errors
       runId,
     } = await req.json();
 
@@ -86,8 +98,20 @@ serve(async (req) => {
       userPrompt += `## Scenario: SYNTAX/RUNTIME ERRORS DETECTED\n`;
       userPrompt += `Errors found by static analysis:\n${JSON.stringify(syntaxErrors.errors, null, 2)}\n\n`;
       userPrompt += `Analyze these errors and provide fixes.`;
+    } else if (compilationError) {
+      // Scenario B: compilation error from Judge0
+      userPrompt += `## Scenario: COMPILATION ERROR\n`;
+      userPrompt += `The code failed to compile when executed by the judge.\n`;
+      userPrompt += `**Compiler Output:**\n\`\`\`\n${compilationError}\n\`\`\`\n\n`;
+      if (executionResults?.results?.length > 0) {
+        const firstResult = executionResults.results[0];
+        if (firstResult.buggy_stderr) {
+          userPrompt += `**Stderr:** ${firstResult.buggy_stderr}\n`;
+        }
+      }
+      userPrompt += `\nAnalyze the compilation error. Identify the exact issue and provide a specific fix.`;
     } else if (executionResults?.summary?.failing > 0) {
-      // Scenario B: failing test cases from Judge0
+      // Scenario C: failing test cases from Judge0
       const firstFail = executionResults.summary.first_failing;
       userPrompt += `## Scenario: FAILING TEST CASE FOUND\n`;
       userPrompt += `Total: ${executionResults.summary.total} tests, ${executionResults.summary.failing} failing\n\n`;
@@ -95,7 +119,7 @@ serve(async (req) => {
       userPrompt += `**Input:**\n\`\`\`\n${firstFail.input}\n\`\`\`\n`;
       userPrompt += `**Buggy Output:** \`${firstFail.buggy_output}\`\n`;
       userPrompt += `**Correct Output:** \`${firstFail.correct_output}\`\n`;
-      if (firstFail.buggy_status !== "OK") {
+      if (firstFail.buggy_status && firstFail.buggy_status !== "OK") {
         userPrompt += `**Buggy Status:** ${firstFail.buggy_status}\n`;
       }
       if (firstFail.buggy_stderr) {
@@ -115,10 +139,11 @@ serve(async (req) => {
 
       userPrompt += `\nFind the exact logical bug causing the output mismatch. Be specific.`;
     } else {
-      // Scenario C: all passed
+      // Scenario D: all passed — do a deep code diff
       userPrompt += `## Scenario: ALL TESTS PASSED\n`;
-      userPrompt += `All ${executionResults?.summary?.total || 0} test cases produced identical output.\n`;
-      userPrompt += `Confirm correctness and suggest targeted improvements only.`;
+      userPrompt += `All ${executionResults?.summary?.total || 0} test cases produced identical output.\n\n`;
+      userPrompt += `IMPORTANT: Do a careful LINE-BY-LINE comparison of the buggy code vs the correct code. List EVERY difference you find, no matter how small (e.g., "endl" vs "\\n", different variable names, different loop bounds, etc.). For each difference, explain whether it could cause issues on an online judge.\n\n`;
+      userPrompt += `If the codes are logically identical, confirm that and suggest improvements.`;
     }
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -173,10 +198,24 @@ serve(async (req) => {
     try {
       parsed = JSON.parse(jsonContent);
     } catch {
-      return new Response(JSON.stringify({ error: "AI returned invalid JSON", raw: jsonContent }), {
+      console.error("AI returned invalid JSON:", jsonContent.substring(0, 500));
+      return new Response(JSON.stringify({ error: "AI returned invalid JSON", raw: jsonContent.substring(0, 1000) }), {
         status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Validate required fields
+    if (!parsed.scenario) {
+      parsed.scenario = compilationError ? "compilation_error" 
+        : syntaxErrors?.has_errors ? "syntax_error"
+        : executionResults?.summary?.failing > 0 ? "logic_bug"
+        : "all_correct";
+    }
+    if (!parsed.verdict) {
+      parsed.verdict = "Analysis complete.";
+    }
+    if (!parsed.issues) parsed.issues = [];
+    if (!parsed.improvements) parsed.improvements = [];
 
     // Store diagnosis in DB
     if (runId) {
