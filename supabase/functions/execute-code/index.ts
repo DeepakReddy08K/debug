@@ -7,8 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const JUDGE0_HOST = "judge0-extra-ce1.p.rapidapi.com";
-const JUDGE0_URL = `https://${JUDGE0_HOST}`;
+const JUDGE0_URL = "https://ce.judge0.com";
 
 // Language mapping for Judge0 Extra CE
 const LANGUAGE_MAP: Record<string, number> = {
