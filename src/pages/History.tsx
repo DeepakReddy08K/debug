@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowLeft, ChevronDown, ChevronRight, Clock, Code, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, Clock, Code, AlertTriangle, CheckCircle, XCircle, Sun, Moon } from "lucide-react";
 import { format } from "date-fns";
 
 interface TestCase {
