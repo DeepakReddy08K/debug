@@ -309,6 +309,17 @@ const Index = () => {
         {/* Row 3: Diagnosis */}
         <DiagnosisDisplay diagnosis={diagnosis} />
       </div>
+
+      {/* AI Chat */}
+      <AIChatPanel
+        runContext={{
+          runId: currentRunId,
+          language: "cpp",
+          buggyCode,
+          correctCode,
+          diagnosis,
+        }}
+      />
     </div>
   );
 };
