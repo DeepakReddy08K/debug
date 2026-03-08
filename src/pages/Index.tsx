@@ -165,7 +165,7 @@ const Index = () => {
       {/* Scrollable main area */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {/* Row 1: Code Editors */}
-        <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border" style={{ height: "clamp(280px, 42vh, 500px)" }}>
+        <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border" style={{ height: "clamp(300px, 50vh, 560px)" }}>
           <div className="h-[280px] md:h-full border-b md:border-b-0 md:border-r border-border">
             <CodeEditorPanel label="Your Code (Buggy)" language="cpp" value={buggyCode} onChange={setBuggyCode} />
           </div>
