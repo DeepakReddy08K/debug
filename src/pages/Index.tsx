@@ -71,7 +71,7 @@ const Index = () => {
       if (!analysisData?.schema) throw new Error("No analysis result");
 
       const schema = analysisData.schema;
-      const detectedLanguage = schema?.problem_meta?.problem_type || "cpp";
+      const detectedLanguage = schema?.problem_meta?.language || "cpp";
 
       const { data: runData, error: insertError } = await supabase.from("runs").insert({
         user_id: user!.id, buggy_code: cleanBuggy, correct_code: cleanCorrect, language: detectedLanguage,
