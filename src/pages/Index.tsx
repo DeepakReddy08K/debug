@@ -44,23 +44,10 @@ rl.on('line', (line) => {
 
 const Index = () => {
   const { user, signOut } = useAuth();
-  const [language, setLanguage] = useState("cpp");
-  const [buggyCode, setBuggyCode] = useState(DEFAULT_CODE.cpp);
+  const [buggyCode, setBuggyCode] = useState("");
   const [correctCode, setCorrectCode] = useState("");
-  const [sampleInput, setSampleInput] = useState("");
-  const [constraints, setConstraints] = useState<Record<string, string>>({});
+  const [additionalInfo, setAdditionalInfo] = useState("");
   const [loading, setLoading] = useState(false);
-
-  const handleConstraintChange = (key: string, val: string) => {
-    setConstraints((prev) => ({ ...prev, [key]: val }));
-  };
-
-  const handleLanguageChange = (lang: string) => {
-    setLanguage(lang);
-    if (!buggyCode || Object.values(DEFAULT_CODE).includes(buggyCode)) {
-      setBuggyCode(DEFAULT_CODE[lang] || "");
-    }
-  };
 
   const handleFindFailing = () => {
     if (!buggyCode.trim()) {
