@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 const Index = () => {
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
   const [buggyCode, setBuggyCode] = useState("");
   const [correctCode, setCorrectCode] = useState("");
   const [additionalInfo, setAdditionalInfo] = useState("");
