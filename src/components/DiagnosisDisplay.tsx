@@ -1,6 +1,6 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, CheckCircle, XCircle, Lightbulb, ArrowRight } from "lucide-react";
+import { AlertTriangle, CheckCircle, XCircle, Lightbulb, ArrowRight, FileQuestion } from "lucide-react";
 
 interface DiagnosisIssue {
   type: "syntax" | "runtime" | "logic" | "performance";
@@ -71,7 +71,26 @@ const improvementTypeColors: Record<string, string> = {
 };
 
 export default function DiagnosisDisplay({ diagnosis }: DiagnosisDisplayProps) {
-  if (!diagnosis) return null;
+  if (!diagnosis) {
+    return (
+      <div className="flex h-full flex-col">
+        <div className="flex items-center border-b border-border bg-secondary/30 px-4 py-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Diagnosis
+          </span>
+        </div>
+        <div className="flex flex-1 items-center justify-center p-6">
+          <div className="text-center space-y-2">
+            <FileQuestion className="h-8 w-8 text-muted-foreground/40 mx-auto" />
+            <p className="text-sm text-muted-foreground">No diagnosis yet</p>
+            <p className="text-xs text-muted-foreground/60">
+              Run analysis or a single test to see results here
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const config = scenarioConfig[diagnosis.scenario] || scenarioConfig.logic_bug;
   const Icon = config.icon;
@@ -98,36 +117,46 @@ export default function DiagnosisDisplay({ diagnosis }: DiagnosisDisplayProps) {
             </div>
           </div>
 
-          {/* Failing Test Case (logic bugs) */}
+          {/* Failing Test Case */}
           {diagnosis.failing_test && (
             <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-3 space-y-2">
-              <span className="text-[10px] font-semibold uppercase text-yellow-400">Failing Test Case</span>
+              <span className="text-[10px] font-semibold uppercase text-yellow-400">
+                Failing Test Case
+              </span>
               <div className="space-y-1.5">
                 <div>
                   <span className="text-[10px] text-muted-foreground font-mono">INPUT</span>
-                  <pre className="text-xs text-foreground bg-secondary/40 rounded p-1.5 mt-0.5 overflow-x-auto whitespace-pre-wrap">{diagnosis.failing_test.input}</pre>
+                  <pre className="text-xs text-foreground bg-secondary/40 rounded p-1.5 mt-0.5 overflow-x-auto whitespace-pre-wrap break-all">
+                    {diagnosis.failing_test.input}
+                  </pre>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
                     <span className="text-[10px] text-red-400 font-mono">YOUR OUTPUT</span>
-                    <pre className="text-xs text-red-300 bg-red-500/10 rounded p-1.5 mt-0.5 overflow-x-auto whitespace-pre-wrap">{diagnosis.failing_test.buggy_output}</pre>
+                    <pre className="text-xs text-red-300 bg-red-500/10 rounded p-1.5 mt-0.5 overflow-x-auto whitespace-pre-wrap break-all">
+                      {diagnosis.failing_test.buggy_output}
+                    </pre>
                   </div>
                   <div>
                     <span className="text-[10px] text-green-400 font-mono">EXPECTED</span>
-                    <pre className="text-xs text-green-300 bg-green-500/10 rounded p-1.5 mt-0.5 overflow-x-auto whitespace-pre-wrap">{diagnosis.failing_test.correct_output}</pre>
+                    <pre className="text-xs text-green-300 bg-green-500/10 rounded p-1.5 mt-0.5 overflow-x-auto whitespace-pre-wrap break-all">
+                      {diagnosis.failing_test.correct_output}
+                    </pre>
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Root Cause (logic bugs only) */}
+          {/* Root Cause */}
           {diagnosis.root_cause && (
             <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-3">
               <div className="flex items-start gap-2">
                 <ArrowRight className="h-3.5 w-3.5 mt-0.5 shrink-0 text-yellow-400" />
                 <div>
-                  <span className="text-[10px] font-semibold uppercase text-yellow-400">Root Cause</span>
+                  <span className="text-[10px] font-semibold uppercase text-yellow-400">
+                    Root Cause
+                  </span>
                   <p className="text-xs text-foreground mt-1">{diagnosis.root_cause}</p>
                 </div>
               </div>
@@ -141,9 +170,14 @@ export default function DiagnosisDisplay({ diagnosis }: DiagnosisDisplayProps) {
                 Issues ({diagnosis.issues.length})
               </span>
               {diagnosis.issues.map((issue, i) => (
-                <div key={i} className="rounded-md border border-border bg-secondary/20 p-3 space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${issueTypeColors[issue.type] || "bg-muted text-muted-foreground"}`}>
+                <div
+                  key={i}
+                  className="rounded-md border border-border bg-secondary/20 p-3 space-y-1.5"
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${issueTypeColors[issue.type] || "bg-muted text-muted-foreground"}`}
+                    >
                       {issue.type.toUpperCase()}
                     </span>
                     {issue.line && (
@@ -162,17 +196,22 @@ export default function DiagnosisDisplay({ diagnosis }: DiagnosisDisplayProps) {
             </div>
           )}
 
-          {/* Improvements (all_correct only) */}
+          {/* Improvements */}
           {diagnosis.improvements?.length > 0 && (
             <div className="space-y-2">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Improvements
               </span>
               {diagnosis.improvements.map((imp, i) => (
-                <div key={i} className="flex items-start gap-2 rounded-md border border-border bg-secondary/20 p-3">
+                <div
+                  key={i}
+                  className="flex items-start gap-2 rounded-md border border-border bg-secondary/20 p-3"
+                >
                   <Lightbulb className="h-3.5 w-3.5 mt-0.5 shrink-0 text-primary" />
                   <div className="space-y-1">
-                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${improvementTypeColors[imp.type] || "bg-muted text-muted-foreground"}`}>
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${improvementTypeColors[imp.type] || "bg-muted text-muted-foreground"}`}
+                    >
                       {imp.type.replace("_", " ").toUpperCase()}
                     </span>
                     <p className="text-xs text-foreground">{imp.description}</p>
