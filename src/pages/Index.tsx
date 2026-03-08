@@ -93,6 +93,12 @@ const Index = () => {
       const { data: diagData, error: diagError } = await supabase.functions.invoke("diagnose-bug", { body: { buggyCode, correctCode, language: detectedLanguage, syntaxErrors: null, executionResults: execData, runId } });
       if (diagError) throw new Error(diagError.message || "Diagnosis failed");
       if (diagData?.error) throw new Error(diagData.error);
+      if (!diagData?.diagnosis || !diagData.diagnosis.scenario) {
+        setDiagnosis({ scenario: "all_correct", verdict: "Error: AI returned no diagnosis. Please try again.", failing_test: null, issues: [], root_cause: null, improvements: [] });
+        setProgressStep("Error — try again.");
+        toast.error("AI returned an incomplete result. Please try again.");
+        return;
+      }
       setDiagnosis(diagData.diagnosis);
       setProgressStep("Diagnosis complete.");
       toast.success("🔍 Diagnosis complete!");
