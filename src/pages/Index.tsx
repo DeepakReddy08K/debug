@@ -131,7 +131,7 @@ const Index = () => {
       if (execData?.error) throw new Error(execData.error);
 
       setProgressStep("Step 5/5: AI diagnosing...");
-      const { data: diagData, error: diagError } = await supabase.functions.invoke("diagnose-bug", { body: { buggyCode, correctCode, language: detectedLanguage, syntaxErrors: null, executionResults: execData, runId } });
+      const { data: diagData, error: diagError } = await supabase.functions.invoke("diagnose-bug", { body: { buggyCode: cleanBuggy, correctCode: cleanCorrect, language: detectedLanguage, syntaxErrors: null, executionResults: execData, runId } });
       if (diagError) throw new Error(diagError.message || "Diagnosis failed");
       if (diagData?.error) throw new Error(diagData.error);
       if (!diagData?.diagnosis || !diagData.diagnosis.scenario) {
