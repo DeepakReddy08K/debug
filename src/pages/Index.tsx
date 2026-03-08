@@ -195,6 +195,9 @@ const Index = () => {
             <History className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">History</span>
           </Button>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={toggleTheme}>
+            {isDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+          </Button>
           <span className="text-xs text-muted-foreground hidden md:inline truncate max-w-[140px]">{user?.email}</span>
           <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={signOut}>
             <LogOut className="h-3.5 w-3.5" />
