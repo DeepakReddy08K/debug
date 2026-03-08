@@ -228,14 +228,14 @@ export default function AIChatPanel({ runContext, className = "" }: AIChatPanelP
                 </div>
               )}
               <div
-                className={`max-w-[85%] rounded-lg px-3 py-2 text-xs leading-relaxed ${
+                className={`max-w-[85%] rounded-lg px-3 py-2 text-xs leading-relaxed break-words overflow-hidden ${
                   msg.role === "user"
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-foreground"
                 }`}
               >
                 {msg.role === "assistant" ? (
-                  <div className="prose prose-xs prose-invert max-w-none [&_pre]:bg-secondary/60 [&_pre]:rounded [&_pre]:p-2 [&_pre]:text-[10px] [&_code]:text-[10px] [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0">
+                  <div className="prose prose-xs prose-invert max-w-none break-words [&_pre]:bg-secondary/60 [&_pre]:rounded [&_pre]:p-2 [&_pre]:text-[10px] [&_pre]:overflow-x-auto [&_code]:text-[10px] [&_code]:break-all [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0">
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                   </div>
                 ) : (
