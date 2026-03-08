@@ -124,10 +124,20 @@ const Index = () => {
       const { data: execData, error: execError } = await supabase.functions.invoke("execute-code", { body: { buggyCode, correctCode, language: "cpp", testCases, runId: null } });
       if (execError) throw new Error(execError.message || "Execution failed");
       if (execData?.error) throw new Error(execData.error);
+      if (execData?.retry_branch1) throw new Error(execData.message || "Compilation error. Check your code.");
       const result = execData?.results?.[0];
-      if (!result) throw new Error("No result returned");
+      if (!result) throw new Error("No result returned. Please try again.");
 
-      if (result.is_failing) {
+      // Handle runtime errors in buggy code
+      if (result.buggy_status && result.buggy_status !== "OK") {
+        setDiagnosis({
+          scenario: "syntax_error", verdict: `Runtime error: ${result.buggy_status}`,
+          failing_test: { input: result.input, buggy_output: result.buggy_stderr || result.buggy_output || "No output", correct_output: result.correct_output || "N/A" },
+          issues: [{ type: "runtime", line: null, description: `Your code encountered: ${result.buggy_status}`, fix: "Check for array bounds, division by zero, or stack overflow." }],
+          root_cause: result.buggy_stderr || result.buggy_status, improvements: [],
+        });
+        toast.error(`Runtime error: ${result.buggy_status}`);
+      } else if (result.is_failing) {
         setDiagnosis({
           scenario: "logic_bug", verdict: "Your code produces incorrect output for this test case.",
           failing_test: { input: result.input, buggy_output: result.buggy_output, correct_output: result.correct_output },
