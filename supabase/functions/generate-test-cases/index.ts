@@ -11,33 +11,39 @@ const SYSTEM_PROMPT = `You are an expert test case generator for competitive pro
 
 You MUST respond with ONLY valid JSON — no markdown, no explanation, no code fences.
 
+CRITICAL RULES:
+- Every "input" field must contain ONLY the literal test input string with \\n for newlines.
+- NEVER use code expressions, Python snippets, string concatenation, or any programming constructs in JSON values.
+- For large test cases, generate the ACTUAL numbers directly. If a test case would be too large to write out, use a SMALLER size (e.g., N=100 instead of N=200000) and note it in the description.
+- Keep total response under 4000 tokens. Prefer fewer, well-crafted test cases over many.
+
 The JSON must follow this exact structure:
 {
   "test_cases": [
     {
-      "category": "string - which category this test case belongs to (e.g., small, edge_case, stress, etc.)",
-      "description": "string - brief description of what this test case covers",
-      "input": "string - the exact input that would be fed to stdin, with newlines as \\n"
+      "category": "string",
+      "description": "string",
+      "input": "string - the LITERAL input text with \\n for newlines, NO code"
     }
   ],
   "total_count": number,
-  "generation_notes": "string - any notes about the generation process"
+  "generation_notes": "string"
 }
 
 Rules:
-- Generate between 10-25 test cases covering ALL categories from the schema's test_case_generation_strategy.
+- Generate between 10-15 test cases covering ALL categories from the schema's test_case_generation_strategy.
 - Each test case's input MUST strictly follow the input_structure format from the schema.
 - Respect ALL constraints (min/max values, array lengths, data types).
 - Include at minimum: 
   * 2-3 trivial/small cases (n=1, n=2)
-  * 2-3 edge cases (all same elements, sorted, reverse sorted, etc.)
-  * 2-3 boundary cases (min constraints, max constraints)
+  * 2-3 edge cases (sorted, reverse sorted, etc.)
+  * 2-3 boundary cases (min/max constraints)
   * 3-5 medium random cases
-  * 2-3 large stress test cases (near max constraints)
-- For multi_test_case format, each test case input should include the "t" (number of test cases) line.
+  * 1-2 stress test cases (use moderate sizes like N=50-500 with actual numbers written out)
+- For multi_test_case format, each test case input should include the "t" line.
 - Ensure inputs are valid — no constraint violations, correct separators, correct number of elements.
-- The input string should use actual newline characters (\\n) between lines.
-- Make stress test cases with values near the maximum constraints to catch TLE/MLE issues.`;
+- The input string should use \\n between lines.
+- DO NOT generate test cases with N > 500 since you must write out all numbers literally.`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
