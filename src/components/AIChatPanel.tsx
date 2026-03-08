@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { MessageCircle, Send, X, Loader2, Bot, User } from "lucide-react";
 import ReactMarkdown from "react-markdown";
