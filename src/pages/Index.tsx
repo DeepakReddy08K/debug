@@ -119,10 +119,80 @@ const Index = () => {
       const testResult = testData?.result;
       const testCount = testResult?.test_cases?.length || 0;
 
-      setProgressStep(`Generated ${testCount} test cases — ready for Branch 3.`);
-      toast.success(
-        `✅ ${testCount} test cases generated and stored. Ready for execution (Branch 3).`
+      if (testCount === 0) {
+        toast.warning("No test cases generated. Please add more problem details.");
+        setProgressStep("No test cases generated.");
+        return;
+      }
+
+      // ===== BRANCH 2c: Execute both codes via Judge0 =====
+      setProgressStep(`Step 4/5: Executing ${testCount} test cases on Judge0...`);
+      toast.info(`Step 4/5: Running ${testCount} test cases on compiler...`);
+
+      // Fetch stored test cases with their IDs
+      let storedTestCases = testResult.test_cases.map((tc: any) => ({
+        id: tc.id || null,
+        input: tc.input,
+      }));
+
+      // If test cases were stored in DB, fetch them to get IDs
+      if (runId) {
+        const { data: dbTestCases } = await supabase
+          .from("test_cases")
+          .select("id, input_data")
+          .eq("run_id", runId);
+
+        if (dbTestCases && dbTestCases.length > 0) {
+          storedTestCases = dbTestCases.map((tc) => ({
+            id: tc.id,
+            input: tc.input_data,
+          }));
+        }
+      }
+
+      const { data: execData, error: execError } = await supabase.functions.invoke(
+        "execute-code",
+        {
+          body: {
+            buggyCode,
+            correctCode,
+            language: detectedLanguage,
+            testCases: storedTestCases,
+            runId,
+          },
+        }
       );
+
+      if (execError) throw new Error(execError.message || "Code execution failed");
+
+      // Check if we need to retry Branch 1
+      if (execData?.retry_branch1) {
+        toast.error(`Execution error: ${execData.message}. Re-running analysis...`);
+        setProgressStep("Input pattern error — restarting pipeline...");
+        // Recursively retry the whole pipeline
+        setLoading(false);
+        handleFindFailing();
+        return;
+      }
+
+      if (execData?.error) throw new Error(execData.error);
+
+      const summary = execData?.summary;
+      const failCount = summary?.failing || 0;
+      const passCount = summary?.passing || 0;
+
+      if (failCount > 0) {
+        const firstFail = summary.first_failing;
+        setProgressStep(
+          `Found ${failCount} failing test case(s). Ready for Branch 3 diagnosis.`
+        );
+        toast.success(
+          `🐛 Found ${failCount}/${summary.total} failing! First failing input saved. Ready for diagnosis.`
+        );
+      } else {
+        setProgressStep(`All ${passCount} test cases passed — codes produce identical output.`);
+        toast.success(`✅ All ${passCount} test cases passed. Both codes produce the same output.`);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Analysis failed";
       toast.error(message);
