@@ -69,6 +69,7 @@ export default function HistoryDetail() {
   const [run, setRun] = useState<Run | null>(null);
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [loading, setLoading] = useState(true);
+  const [chatMessages, setChatMessages] = useState<{ role: string; content: string; created_at: string }[]>([]);
   const [isDark, setIsDark] = useState(() => localStorage.getItem("theme") !== "light");
 
   const toggleTheme = () => {
