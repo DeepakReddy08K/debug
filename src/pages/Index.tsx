@@ -148,7 +148,7 @@ const Index = () => {
     try {
       const testCases = [{ id: null, input: testInput }];
       toast.info("Running your test case...");
-      const { data: execData, error: execError } = await supabase.functions.invoke("execute-code", { body: { buggyCode, correctCode, language: "cpp", testCases, runId: null } });
+      const { data: execData, error: execError } = await supabase.functions.invoke("execute-code", { body: { buggyCode, correctCode, language, testCases, runId: null } });
       if (execError) throw new Error(execError.message || "Execution failed");
       if (execData?.error) throw new Error(execData.error);
       if (execData?.retry_branch1) throw new Error(execData.message || "Compilation error. Check your code.");
