@@ -14,9 +14,16 @@ interface DiagnosisImprovement {
   description: string;
 }
 
+interface FailingTest {
+  input: string;
+  buggy_output: string;
+  correct_output: string;
+}
+
 interface DiagnosisResult {
   scenario: "syntax_error" | "logic_bug" | "all_correct";
   verdict: string;
+  failing_test: FailingTest | null;
   issues: DiagnosisIssue[];
   root_cause: string | null;
   improvements: DiagnosisImprovement[];
