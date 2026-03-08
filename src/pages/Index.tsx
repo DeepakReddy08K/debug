@@ -7,6 +7,7 @@ import CodeEditorPanel from "@/components/CodeEditorPanel";
 import ConfigPanel from "@/components/ConfigPanel";
 import RunSingleTestPanel from "@/components/RunSingleTestPanel";
 import DiagnosisDisplay from "@/components/DiagnosisDisplay";
+import AIChatPanel from "@/components/AIChatPanel";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -20,6 +21,7 @@ const Index = () => {
   const [progressStep, setProgressStep] = useState("");
   const [diagnosis, setDiagnosis] = useState<any>(null);
   const [singleTestLoading, setSingleTestLoading] = useState(false);
+  const [currentRunId, setCurrentRunId] = useState<string | undefined>(undefined);
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem("theme") !== "light";
   });
@@ -55,6 +57,7 @@ const Index = () => {
       }).select("id").single();
       if (insertError) console.error("Failed to store run:", insertError);
       const runId = runData?.id;
+      if (runId) setCurrentRunId(runId);
 
       setProgressStep("Step 2/5: Checking for syntax & runtime errors...");
       const { data: syntaxData, error: syntaxError } = await supabase.functions.invoke("check-syntax", { body: { buggyCode, correctCode, language: detectedLanguage } });
@@ -306,6 +309,17 @@ const Index = () => {
         {/* Row 3: Diagnosis */}
         <DiagnosisDisplay diagnosis={diagnosis} />
       </div>
+
+      {/* AI Chat */}
+      <AIChatPanel
+        runContext={{
+          runId: currentRunId,
+          language: "cpp",
+          buggyCode,
+          correctCode,
+          diagnosis,
+        }}
+      />
     </div>
   );
 };
