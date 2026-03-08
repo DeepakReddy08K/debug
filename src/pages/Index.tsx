@@ -180,7 +180,7 @@ const Index = () => {
           <span className="ml-1 rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">Beta</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground text-xs h-8">
+          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground text-xs h-8" onClick={() => navigate("/history")}>
             <History className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">History</span>
           </Button>
