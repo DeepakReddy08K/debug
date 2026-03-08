@@ -278,7 +278,6 @@ export default function HistoryDetail() {
                       <div className="mt-0.5 p-2 rounded bg-muted/40 border border-border text-xs font-mono">
                         <CollapsibleText text={tc.input_data} className="text-xs font-mono" />
                       </div>
-                      </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {tc.output_buggy !== null && (
