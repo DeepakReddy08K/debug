@@ -3,59 +3,56 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowLeft, ChevronDown, ChevronRight, Clock, Code, AlertTriangle, CheckCircle, XCircle, Sun, Moon } from "lucide-react";
+import {
+  ArrowLeft,
+  Clock,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  ChevronRight,
+  Sun,
+  Moon,
+} from "lucide-react";
 import { format } from "date-fns";
 
-interface TestCase {
+interface RunSummary {
   id: string;
-  input_data: string;
-  output_buggy: string | null;
-  output_correct: string | null;
-  is_failing: boolean | null;
-  created_at: string;
-}
-
-interface Run {
-  id: string;
-  buggy_code: string;
-  correct_code: string;
   language: string;
   status: string;
-  sample_input: string | null;
-  failing_input: string | null;
-  output_buggy: string | null;
-  output_correct: string | null;
-  ai_diagnosis: any;
-  syntax_check: any;
-  constraints_json: any;
   created_at: string;
-  test_cases: TestCase[];
+  buggy_code: string;
+  ai_diagnosis: any;
+  failing_input: string | null;
+  test_case_count: number;
+  failing_count: number;
 }
 
-const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  pending: { label: "Pending", variant: "secondary" },
-  analyzed: { label: "Analyzed", variant: "secondary" },
-  syntax_errors_found: { label: "Syntax Errors", variant: "destructive" },
-  syntax_clean: { label: "Syntax Clean", variant: "default" },
-  tests_generated: { label: "Tests Generated", variant: "secondary" },
-  failing_found: { label: "Bug Found", variant: "destructive" },
-  all_passed: { label: "All Passed", variant: "default" },
-  diagnosed: { label: "Diagnosed", variant: "default" },
+const statusConfig: Record<
+  string,
+  {
+    label: string;
+    variant: "default" | "secondary" | "destructive" | "outline";
+    icon: typeof CheckCircle;
+  }
+> = {
+  pending: { label: "Pending", variant: "secondary", icon: Clock },
+  analyzed: { label: "Analyzed", variant: "secondary", icon: Clock },
+  syntax_errors_found: { label: "Syntax Errors", variant: "destructive", icon: XCircle },
+  syntax_clean: { label: "Syntax Clean", variant: "default", icon: CheckCircle },
+  tests_generated: { label: "Tests Generated", variant: "secondary", icon: Clock },
+  failing_found: { label: "Bug Found", variant: "destructive", icon: AlertTriangle },
+  all_passed: { label: "All Passed", variant: "default", icon: CheckCircle },
+  diagnosed: { label: "Diagnosed", variant: "default", icon: CheckCircle },
 };
 
 export default function History() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [runs, setRuns] = useState<Run[]>([]);
+  const [runs, setRuns] = useState<RunSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expandedRun, setExpandedRun] = useState<string | null>(null);
-  const [isDark, setIsDark] = useState(() => {
-    return localStorage.getItem("theme") !== "light";
-  });
+  const [isDark, setIsDark] = useState(() => localStorage.getItem("theme") !== "light");
 
   const toggleTheme = () => {
     setIsDark((prev) => {
@@ -75,7 +72,7 @@ export default function History() {
 
       const { data: runsData, error } = await supabase
         .from("runs")
-        .select("*")
+        .select("id, language, status, created_at, buggy_code, ai_diagnosis, failing_input")
         .eq("user_id", user.id)
         .gte("created_at", threeMonthsAgo.toISOString())
         .order("created_at", { ascending: false });
@@ -86,28 +83,29 @@ export default function History() {
         return;
       }
 
-      // Fetch test cases for all runs
+      // Fetch test case counts
       const runIds = (runsData || []).map((r) => r.id);
-      let testCasesMap: Record<string, TestCase[]> = {};
+      let tcCounts: Record<string, { total: number; failing: number }> = {};
 
       if (runIds.length > 0) {
         const { data: tcData } = await supabase
           .from("test_cases")
-          .select("*")
-          .in("run_id", runIds)
-          .order("created_at", { ascending: true });
+          .select("run_id, is_failing")
+          .in("run_id", runIds);
 
         (tcData || []).forEach((tc) => {
-          if (!testCasesMap[tc.run_id]) testCasesMap[tc.run_id] = [];
-          testCasesMap[tc.run_id].push(tc as TestCase);
+          if (!tcCounts[tc.run_id]) tcCounts[tc.run_id] = { total: 0, failing: 0 };
+          tcCounts[tc.run_id].total++;
+          if (tc.is_failing) tcCounts[tc.run_id].failing++;
         });
       }
 
       setRuns(
         (runsData || []).map((r) => ({
           ...r,
-          test_cases: testCasesMap[r.id] || [],
-        })) as Run[]
+          test_case_count: tcCounts[r.id]?.total || 0,
+          failing_count: tcCounts[r.id]?.failing || 0,
+        })) as RunSummary[]
       );
       setLoading(false);
     };
@@ -115,19 +113,26 @@ export default function History() {
     fetchHistory();
   }, [user]);
 
-  const getVerdict = (run: Run): string => {
+  const getVerdict = (run: RunSummary): string | null => {
     if (run.ai_diagnosis && typeof run.ai_diagnosis === "object") {
-      const d = run.ai_diagnosis as any;
-      return d.verdict || d.scenario || "—";
+      return (run.ai_diagnosis as any).verdict || null;
     }
-    return "—";
+    return null;
+  };
+
+  const getCodePreview = (code: string): string => {
+    const lines = code.split("\n").filter((l) => l.trim());
+    // Find first meaningful line (skip includes/imports)
+    const meaningful = lines.find(
+      (l) => !l.startsWith("#include") && !l.startsWith("import") && !l.startsWith("using")
+    );
+    return (meaningful || lines[0] || "").slice(0, 80);
   };
 
   return (
     <div className={`${isDark ? "dark" : ""} min-h-screen bg-background text-foreground`}>
-      {/* Header */}
       <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
@@ -143,7 +148,7 @@ export default function History() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-6 space-y-3">
+      <main className="max-w-4xl mx-auto px-4 py-6 space-y-2">
         {loading ? (
           <div className="flex items-center justify-center py-20 text-muted-foreground">
             <Clock className="h-5 w-5 animate-spin mr-2" /> Loading history…
@@ -156,117 +161,72 @@ export default function History() {
           </Card>
         ) : (
           runs.map((run) => {
-            const isExpanded = expandedRun === run.id;
-            const sc = statusConfig[run.status] || { label: run.status, variant: "outline" as const };
+            const sc = statusConfig[run.status] || {
+              label: run.status,
+              variant: "outline" as const,
+              icon: Clock,
+            };
+            const StatusIcon = sc.icon;
+            const verdict = getVerdict(run);
 
             return (
-              <Collapsible key={run.id} open={isExpanded} onOpenChange={() => setExpandedRun(isExpanded ? null : run.id)}>
-                <Card className="overflow-hidden transition-shadow hover:shadow-md">
-                  <CollapsibleTrigger asChild>
-                    <CardHeader className="cursor-pointer py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <CardTitle className="text-sm font-mono truncate max-w-[300px]">
-                              {run.buggy_code.split("\n")[0].slice(0, 60)}
-                            </CardTitle>
-                            <Badge variant={sc.variant} className="text-xs">{sc.label}</Badge>
-                            <Badge variant="outline" className="text-xs uppercase">{run.language}</Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {format(new Date(run.created_at), "MMM d, yyyy · h:mm a")}
-                            {run.test_cases.length > 0 && ` · ${run.test_cases.length} test cases`}
-                            {run.test_cases.some(tc => tc.is_failing) && (
-                              <span className="text-destructive ml-1">
-                                · {run.test_cases.filter(tc => tc.is_failing).length} failing
+              <Card
+                key={run.id}
+                className="cursor-pointer transition-all hover:shadow-md hover:border-primary/30 active:scale-[0.995]"
+                onClick={() => navigate(`/history/${run.id}`)}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`shrink-0 rounded-full p-2 ${
+                        run.status === "failing_found" || run.status === "syntax_errors_found"
+                          ? "bg-destructive/10 text-destructive"
+                          : run.status === "all_passed" || run.status === "diagnosed"
+                          ? "bg-primary/10 text-primary"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      <StatusIcon className="h-4 w-4" />
+                    </div>
+
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant={sc.variant} className="text-[10px]">
+                          {sc.label}
+                        </Badge>
+                        <Badge variant="outline" className="text-[10px] uppercase">
+                          {run.language}
+                        </Badge>
+                        {run.test_case_count > 0 && (
+                          <span className="text-[10px] text-muted-foreground">
+                            {run.test_case_count} tests
+                            {run.failing_count > 0 && (
+                              <span className="text-destructive">
+                                {" "}
+                                · {run.failing_count} failing
                               </span>
                             )}
-                          </p>
-                        </div>
-                      </div>
-                    </CardHeader>
-                  </CollapsibleTrigger>
-
-                  <CollapsibleContent>
-                    <CardContent className="px-4 pb-4 pt-0 space-y-4">
-                      {/* Verdict */}
-                      {getVerdict(run) !== "—" && (
-                        <div className="p-3 rounded-md bg-muted/50 border border-border text-sm">
-                          <span className="font-semibold text-foreground">AI Verdict: </span>
-                          <span className="text-muted-foreground">{getVerdict(run)}</span>
-                        </div>
-                      )}
-
-                      {/* Code snippets */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
-                            <XCircle className="h-3 w-3 text-destructive" /> Buggy Code
-                          </p>
-                          <ScrollArea className="h-40 rounded-md border border-border bg-muted/30">
-                            <pre className="p-3 text-xs font-mono whitespace-pre-wrap">{run.buggy_code}</pre>
-                          </ScrollArea>
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
-                            <CheckCircle className="h-3 w-3 text-primary" /> Correct Code
-                          </p>
-                          <ScrollArea className="h-40 rounded-md border border-border bg-muted/30">
-                            <pre className="p-3 text-xs font-mono whitespace-pre-wrap">{run.correct_code}</pre>
-                          </ScrollArea>
-                        </div>
+                          </span>
+                        )}
                       </div>
 
-                      {/* Failing input */}
-                      {run.failing_input && (
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
-                            <AlertTriangle className="h-3 w-3 text-destructive" /> Failing Input
-                          </p>
-                          <pre className="p-2 rounded-md bg-destructive/10 border border-destructive/20 text-xs font-mono">{run.failing_input}</pre>
-                        </div>
+                      <p className="text-xs font-mono text-foreground truncate">
+                        {getCodePreview(run.buggy_code)}
+                      </p>
+
+                      {verdict && (
+                        <p className="text-xs text-muted-foreground truncate">{verdict}</p>
                       )}
 
-                      {/* Test cases */}
-                      {run.test_cases.length > 0 && (
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
-                            <Code className="h-3 w-3" /> Test Cases ({run.test_cases.length})
-                          </p>
-                          <div className="space-y-2 max-h-60 overflow-y-auto">
-                            {run.test_cases.map((tc, i) => (
-                              <div key={tc.id} className={`p-2 rounded-md border text-xs font-mono ${tc.is_failing ? "border-destructive/30 bg-destructive/5" : "border-border bg-muted/20"}`}>
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="font-semibold text-foreground">#{i + 1}</span>
-                                  {tc.is_failing ? (
-                                    <Badge variant="destructive" className="text-[10px] px-1 py-0">FAIL</Badge>
-                                  ) : (
-                                    <Badge variant="default" className="text-[10px] px-1 py-0">PASS</Badge>
-                                  )}
-                                </div>
-                                <p><span className="text-muted-foreground">Input:</span> {tc.input_data}</p>
-                                {tc.output_correct && <p><span className="text-muted-foreground">Expected:</span> {tc.output_correct}</p>}
-                                {tc.output_buggy && <p><span className="text-muted-foreground">Got:</span> {tc.output_buggy}</p>}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                      <p className="text-[10px] text-muted-foreground">
+                        {format(new Date(run.created_at), "MMM d, yyyy · h:mm a")}
+                      </p>
+                    </div>
 
-                      {/* Syntax check */}
-                      {run.syntax_check && typeof run.syntax_check === "object" && (run.syntax_check as any).errors && (
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground mb-1">Syntax Errors</p>
-                          <pre className="p-2 rounded-md bg-destructive/10 border border-destructive/20 text-xs font-mono whitespace-pre-wrap">
-                            {JSON.stringify((run.syntax_check as any).errors, null, 2)}
-                          </pre>
-                        </div>
-                      )}
-                    </CardContent>
-                  </CollapsibleContent>
-                </Card>
-              </Collapsible>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  </div>
+                </CardContent>
+              </Card>
             );
           })
         )}
