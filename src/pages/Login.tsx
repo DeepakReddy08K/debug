@@ -100,12 +100,20 @@ export default function Login() {
             </Button>
           </form>
 
-          <div className="flex items-center justify-between text-sm">
+          <div className="text-center text-sm text-muted-foreground">
             <Link to="/forgot-password" className="text-primary hover:underline">
               Forgot password?
             </Link>
-            <Link to="/signup" className="text-primary hover:underline">
-              Create account
+          </div>
+
+          <div className="rounded-lg border border-border bg-secondary/50 p-4 text-center">
+            <p className="text-sm text-muted-foreground">
+              Don't have an account?
+            </p>
+            <Link to="/signup">
+              <Button variant="outline" className="mt-2 w-full">
+                Create Account
+              </Button>
             </Link>
           </div>
         </CardContent>
