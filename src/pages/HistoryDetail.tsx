@@ -301,9 +301,10 @@ export default function HistoryDetail() {
                       )}
                       {tc.output_correct !== null && (
                         <div>
-                          <span className="text-[10px] font-mono text-muted-foreground uppercase">
-                            Expected
-                          </span>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono text-muted-foreground uppercase">Expected</span>
+                            <CopyButton text={tc.output_correct} />
+                          </div>
                           <div className="mt-0.5 p-2 rounded bg-primary/5 border border-primary/20 text-xs font-mono">
                             <CollapsibleText text={tc.output_correct} className="text-xs font-mono" />
                           </div>
