@@ -22,6 +22,7 @@ const Index = () => {
   const [diagnosis, setDiagnosis] = useState<any>(null);
   const [singleTestLoading, setSingleTestLoading] = useState(false);
   const [currentRunId, setCurrentRunId] = useState<string | undefined>(undefined);
+  const [language, setLanguage] = useState("cpp");
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem("theme") !== "light";
   });
@@ -30,6 +31,11 @@ const Index = () => {
     setIsDark((prev) => {
       const next = !prev;
       localStorage.setItem("theme", next ? "dark" : "light");
+      if (next) {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
       return next;
     });
   };

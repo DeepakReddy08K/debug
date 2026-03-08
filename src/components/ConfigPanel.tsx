@@ -3,6 +3,13 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Loader2, Search } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface ConfigPanelProps {
   additionalInfo: string;
@@ -10,6 +17,8 @@ interface ConfigPanelProps {
   onFindFailing: () => void;
   loading: boolean;
   progressStep?: string;
+  language: string;
+  onLanguageChange: (val: string) => void;
 }
 
 export default function ConfigPanel({
