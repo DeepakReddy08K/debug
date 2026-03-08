@@ -71,9 +71,15 @@ async function pollResults(
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise((r) => setTimeout(r, 1500));
 
+    const headers: Record<string, string> = {};
+    if (RAPIDAPI_KEY) {
+      headers["X-RapidAPI-Key"] = RAPIDAPI_KEY;
+      headers["X-RapidAPI-Host"] = "judge0-ce.p.rapidapi.com";
+    }
+
     const res = await fetch(
       `${JUDGE0_URL}/submissions/batch?tokens=${tokenStr}&base64_encoded=true&fields=token,stdout,stderr,status,compile_output,time,memory`,
-      { method: "GET" }
+      { method: "GET", headers }
     );
 
     if (!res.ok) {
