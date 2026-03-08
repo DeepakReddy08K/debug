@@ -20,7 +20,8 @@ The JSON must follow this exact structure:
   "problem_meta": {
     "name": "string",
     "source": "string (e.g. Codeforces, LeetCode, Unknown)",
-    "problem_type": "string (e.g. greedy, dp, sorting, graph)"
+    "problem_type": "string (e.g. greedy, dp, sorting, graph)",
+    "language": "string — the PROGRAMMING LANGUAGE of the code. MUST be one of: cpp, c, python, java, javascript. Detect from syntax: #include → cpp, import java → java, def/print() → python, etc. Default to cpp if ambiguous."
   },
   "input_structure": {
     "format": "single_test_case | multi_test_case",
