@@ -7,19 +7,18 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const JUDGE0_HOST = "judge0-extra-ce1.p.rapidapi.com";
-const JUDGE0_URL = `https://${JUDGE0_HOST}`;
+const JUDGE0_URL = "https://ce.judge0.com";
 
-// Language mapping for Judge0 Extra CE
+// Language mapping for Judge0 CE
 const LANGUAGE_MAP: Record<string, number> = {
-  cpp: 54,      // C++ (GCC 9.2.0)
+  cpp: 54,
   "c++": 54,
-  c: 50,        // C (GCC 9.2.0)
-  python: 71,   // Python (3.8.1)
+  c: 50,
+  python: 71,
   py: 71,
   python3: 71,
-  java: 62,     // Java (OpenJDK 13.0.1)
-  javascript: 63, // JavaScript (Node.js 12.14.0)
+  java: 62,
+  javascript: 63,
   js: 63,
 };
 
@@ -35,10 +34,8 @@ function fromBase64(str: string): string {
   }
 }
 
-// Submit a batch of submissions to Judge0
 async function submitBatch(
-  submissions: { language_id: number; source_code: string; stdin: string }[],
-  apiKey: string
+  submissions: { language_id: number; source_code: string; stdin: string }[]
 ): Promise<{ token: string }[]> {
   const encoded = submissions.map((s) => ({
     language_id: s.language_id,
@@ -52,11 +49,7 @@ async function submitBatch(
     `${JUDGE0_URL}/submissions/batch?base64_encoded=true`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-rapidapi-host": JUDGE0_HOST,
-        "x-rapidapi-key": apiKey,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ submissions: encoded }),
     }
   );
@@ -69,10 +62,8 @@ async function submitBatch(
   return await res.json();
 }
 
-// Poll for results until all are done
 async function pollResults(
   tokens: string[],
-  apiKey: string,
   maxAttempts = 30
 ): Promise<Record<string, any>[]> {
   const tokenStr = tokens.join(",");
@@ -82,13 +73,7 @@ async function pollResults(
 
     const res = await fetch(
       `${JUDGE0_URL}/submissions/batch?tokens=${tokenStr}&base64_encoded=true&fields=token,stdout,stderr,status,compile_output,time,memory`,
-      {
-        method: "GET",
-        headers: {
-          "x-rapidapi-host": JUDGE0_HOST,
-          "x-rapidapi-key": apiKey,
-        },
-      }
+      { method: "GET" }
     );
 
     if (!res.ok) {
@@ -98,8 +83,7 @@ async function pollResults(
 
     const data = await res.json();
     const submissions = data.submissions || data;
-    
-    // Check if all are done (status.id >= 3 means finished)
+
     const allDone = submissions.every(
       (s: any) => s.status && s.status.id >= 3
     );
@@ -128,18 +112,12 @@ serve(async (req) => {
   try {
     const { buggyCode, correctCode, language, testCases, runId } = await req.json();
 
-    const JUDGE0_KEY = Deno.env.get("JUDGE0_RAPIDAPI_KEY");
-    if (!JUDGE0_KEY) {
-      throw new Error("JUDGE0_RAPIDAPI_KEY is not configured");
-    }
-
     const langId = LANGUAGE_MAP[language?.toLowerCase()] || LANGUAGE_MAP["cpp"];
 
     if (!testCases || !Array.isArray(testCases) || testCases.length === 0) {
       throw new Error("No test cases provided");
     }
 
-    // Validate test case inputs have content
     const validTestCases = testCases.filter(
       (tc: any) => tc.input && tc.input.trim().length > 0
     );
@@ -155,27 +133,25 @@ serve(async (req) => {
       );
     }
 
-    // Build submissions: for each test case, submit both buggy and correct code
-    // Interleaved: [buggy_tc1, correct_tc1, buggy_tc2, correct_tc2, ...]
+    // Build submissions: interleaved [buggy_tc1, correct_tc1, buggy_tc2, correct_tc2, ...]
     const submissions: { language_id: number; source_code: string; stdin: string }[] = [];
     for (const tc of validTestCases) {
       submissions.push({ language_id: langId, source_code: buggyCode, stdin: tc.input });
       submissions.push({ language_id: langId, source_code: correctCode, stdin: tc.input });
     }
 
-    // Judge0 batch limit is typically 20 submissions at a time
     const BATCH_SIZE = 20;
     const allResults: any[] = [];
 
     for (let i = 0; i < submissions.length; i += BATCH_SIZE) {
       const batch = submissions.slice(i, i + BATCH_SIZE);
-      const tokens = await submitBatch(batch, JUDGE0_KEY);
+      const tokens = await submitBatch(batch);
       const tokenList = tokens.map((t: any) => t.token);
-      const results = await pollResults(tokenList, JUDGE0_KEY);
+      const results = await pollResults(tokenList);
       allResults.push(...results);
     }
 
-    // Parse results into structured output
+    // Parse results
     const executionResults: any[] = [];
     let hasCompileError = false;
     let compileErrorMsg = "";
@@ -184,7 +160,6 @@ serve(async (req) => {
       const buggyResult = allResults[i * 2];
       const correctResult = allResults[i * 2 + 1];
 
-      // Check for compilation errors
       if (buggyResult.status.id === 6) {
         hasCompileError = true;
         compileErrorMsg = buggyResult.compile_output || "Compilation error in buggy code";
@@ -198,7 +173,6 @@ serve(async (req) => {
       const correctOutput = correctResult.stdout?.trim() || "";
       const isFailing = buggyOutput !== correctOutput;
 
-      // Build status description
       let buggyStatus = "OK";
       if (buggyResult.status.id === 5) buggyStatus = "Time Limit Exceeded";
       else if (buggyResult.status.id === 6) buggyStatus = "Compilation Error";
@@ -227,7 +201,6 @@ serve(async (req) => {
       });
     }
 
-    // If compilation error, signal to retry Branch 1
     if (hasCompileError) {
       return new Response(
         JSON.stringify({
@@ -243,7 +216,7 @@ serve(async (req) => {
     const failingCases = executionResults.filter((r) => r.is_failing);
     const firstFailing = failingCases.length > 0 ? failingCases[0] : null;
 
-    // Store results in DB if runId is provided
+    // Store results in DB if runId provided
     if (runId) {
       const authHeader = req.headers.get("Authorization");
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -252,7 +225,6 @@ serve(async (req) => {
         global: { headers: authHeader ? { Authorization: authHeader } : {} },
       });
 
-      // Update each test case with execution outputs
       for (const result of executionResults) {
         if (result.test_case_id) {
           await supabase
@@ -266,17 +238,14 @@ serve(async (req) => {
         }
       }
 
-      // Update run with first failing input and outputs
       const updatePayload: Record<string, any> = {
         status: failingCases.length > 0 ? "failing_found" : "all_passed",
       };
-
       if (firstFailing) {
         updatePayload.failing_input = firstFailing.input;
         updatePayload.output_buggy = firstFailing.buggy_output;
         updatePayload.output_correct = firstFailing.correct_output;
       }
-
       await supabase.from("runs").update(updatePayload).eq("id", runId);
     }
 
