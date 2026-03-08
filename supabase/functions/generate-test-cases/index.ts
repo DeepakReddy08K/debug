@@ -1,11 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { corsHeaders, validateAuth, unauthorizedResponse } from "../_shared/auth.ts";
 
 const SYSTEM_PROMPT = `You are a test case generator for competitive programming. Given a problem schema, generate 8-10 test cases.
 
@@ -131,6 +125,12 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Validate authentication
+  const auth = await validateAuth(req);
+  if (!auth) {
+    return unauthorizedResponse();
+  }
+
   try {
     const { schema, runId } = await req.json();
 
@@ -138,14 +138,6 @@ serve(async (req) => {
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
-
-    const authHeader = req.headers.get("Authorization");
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: authHeader ? { Authorization: authHeader } : {} },
-    });
 
     const trimmedSchema = trimSchema(schema);
     const userPrompt = `Generate test cases for this problem:\n\n${JSON.stringify(trimmedSchema, null, 2)}\n\nGenerate 8-10 diverse test cases. Each input must be a literal string. Keep N ≤ 200.`;
@@ -233,7 +225,7 @@ serve(async (req) => {
       });
     }
 
-    // Store test cases in database
+    // Store test cases in database using authenticated client
     if (runId && parsed.test_cases.length > 0) {
       const testCaseRows = parsed.test_cases.map((tc: { input: string }) => ({
         run_id: runId,
@@ -241,10 +233,10 @@ serve(async (req) => {
         is_failing: false,
       }));
 
-      const { error: insertError } = await supabase.from("test_cases").insert(testCaseRows);
+      const { error: insertError } = await auth.supabase.from("test_cases").insert(testCaseRows);
       if (insertError) console.error("Failed to store test cases:", insertError);
 
-      await supabase.from("runs").update({ status: "tests_generated" }).eq("id", runId);
+      await auth.supabase.from("runs").update({ status: "tests_generated" }).eq("id", runId);
     }
 
     return new Response(JSON.stringify({ result: parsed }), {

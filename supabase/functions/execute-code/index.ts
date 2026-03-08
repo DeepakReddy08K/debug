@@ -1,11 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { corsHeaders, validateAuth, unauthorizedResponse } from "../_shared/auth.ts";
 
 const JUDGE0_URL = "https://ce.judge0.com";
 
@@ -106,6 +100,12 @@ async function pollResults(
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Validate authentication
+  const auth = await validateAuth(req);
+  if (!auth) {
+    return unauthorizedResponse();
   }
 
   try {
@@ -224,18 +224,11 @@ serve(async (req) => {
     const failingCases = executionResults.filter((r) => r.is_failing);
     const firstFailing = failingCases.length > 0 ? failingCases[0] : null;
 
-    // Store results in DB if runId provided
+    // Store results in DB if runId provided using authenticated client
     if (runId) {
-      const authHeader = req.headers.get("Authorization");
-      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-      const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-      const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-        global: { headers: authHeader ? { Authorization: authHeader } : {} },
-      });
-
       for (const result of executionResults) {
         if (result.test_case_id) {
-          await supabase
+          await auth.supabase
             .from("test_cases")
             .update({
               output_buggy: result.buggy_output,
@@ -254,7 +247,7 @@ serve(async (req) => {
         updatePayload.output_buggy = firstFailing.buggy_output;
         updatePayload.output_correct = firstFailing.correct_output;
       }
-      await supabase.from("runs").update(updatePayload).eq("id", runId);
+      await auth.supabase.from("runs").update(updatePayload).eq("id", runId);
     }
 
     return new Response(
