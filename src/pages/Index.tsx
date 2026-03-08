@@ -19,63 +19,62 @@ const Index = () => {
   const [additionalInfo, setAdditionalInfo] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Branch 1 state
-  const [analyzing, setAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<Record<string, unknown> | null>(null);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
-
-  const handleAnalyze = async () => {
-    if (!buggyCode.trim() && !correctCode.trim() && !additionalInfo.trim()) {
-      toast.error("Please provide at least some code or problem info to analyze");
+  const handleFindFailing = async () => {
+    if (!buggyCode.trim()) {
+      toast.error("Please paste your buggy code");
+      return;
+    }
+    if (!correctCode.trim()) {
+      toast.error("Please paste the correct reference code");
       return;
     }
 
-    setAnalyzing(true);
-    setAnalysisError(null);
-    setAnalysisResult(null);
+    setLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke("analyze-problem", {
-        body: {
-          buggyCode,
-          correctCode,
-          additionalInfo,
-        },
+      // Branch 1: Analyze problem and get JSON schema
+      toast.info("Step 1/3: Analyzing problem structure...");
+      const { data: analysisData, error: analysisError } = await supabase.functions.invoke(
+        "analyze-problem",
+        {
+          body: { buggyCode, correctCode, additionalInfo },
+        }
+      );
+
+      if (analysisError) throw new Error(analysisError.message || "Analysis failed");
+      if (analysisData?.error) throw new Error(analysisData.error);
+      if (!analysisData?.schema) throw new Error("No analysis result");
+
+      const schema = analysisData.schema;
+      const detectedLanguage = schema?.problem_meta?.problem_type || "cpp";
+
+      // Store the run + JSON schema in database
+      const { error: insertError } = await supabase.from("runs").insert({
+        user_id: user!.id,
+        buggy_code: buggyCode,
+        correct_code: correctCode,
+        language: detectedLanguage,
+        constraints_json: schema,
+        status: "analyzed",
+        sample_input: additionalInfo || null,
       });
 
-      if (error) {
-        throw new Error(error.message || "Failed to analyze problem");
+      if (insertError) {
+        console.error("Failed to store run:", insertError);
+        // Non-blocking — continue even if DB insert fails
       }
 
-      if (data?.error) {
-        throw new Error(data.error);
-      }
-
-      if (data?.schema) {
-        setAnalysisResult(data.schema);
-        toast.success("Problem analyzed successfully!");
-      } else {
-        throw new Error("Unexpected response format");
-      }
+      toast.success("Problem analyzed! Branches 2 & 3 coming next.");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Analysis failed";
-      setAnalysisError(message);
       toast.error(message);
     } finally {
-      setAnalyzing(false);
+      setLoading(false);
     }
-  };
-
-  const handleFindFailing = () => {
-    if (!analysisResult) {
-      toast.error("Run Branch 1 analysis first");
-      return;
-    }
-    toast.info("Branch 2 & 3 coming next!");
   };
 
   const handleRunSingle = () => {
-    toast.info("Single test run coming in Phase 3!");
+    toast.info("Single test run coming soon!");
   };
 
   return (
@@ -133,10 +132,6 @@ const Index = () => {
               onFindFailing={handleFindFailing}
               onRunSingle={handleRunSingle}
               loading={loading}
-              analysisResult={analysisResult}
-              analysisError={analysisError}
-              analyzing={analyzing}
-              onAnalyze={handleAnalyze}
             />
           </ResizablePanel>
         </ResizablePanelGroup>
