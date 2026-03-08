@@ -111,18 +111,23 @@ serve(async (req) => {
       });
     }
 
-    let jsonContent = content.trim();
-    if (jsonContent.startsWith("```")) {
-      jsonContent = jsonContent.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
-    }
-
+    // Robust JSON extraction
     let parsed;
     try {
-      parsed = JSON.parse(jsonContent);
+      parsed = extractJsonFromResponse(content);
     } catch {
-      return new Response(JSON.stringify({ error: "AI returned invalid JSON", raw: jsonContent }), {
+      return new Response(JSON.stringify({ error: "AI returned invalid JSON", raw: content.substring(0, 500) }), {
         status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Filter out test cases with code expressions in input
+    if (parsed.test_cases) {
+      parsed.test_cases = parsed.test_cases.filter((tc: { input: string }) => {
+        const hasCode = /\b(map|join|range|lambda|for |import |list\()\b/.test(tc.input);
+        return !hasCode && typeof tc.input === "string" && tc.input.length < 50000;
+      });
+      parsed.total_count = parsed.test_cases.length;
     }
 
     // Store test cases in database if runId is provided
