@@ -59,9 +59,13 @@ const Index = () => {
         const { data: diagData, error: diagError } = await supabase.functions.invoke("diagnose-bug", { body: { buggyCode, correctCode, language: detectedLanguage, syntaxErrors: syntaxResult, executionResults: null, runId } });
         if (diagError) throw new Error(diagError.message || "Diagnosis failed");
         if (diagData?.error) throw new Error(diagData.error);
+        if (!diagData?.diagnosis || !diagData.diagnosis.scenario) {
+          setDiagnosis({ scenario: "all_correct", verdict: "Error: AI returned no diagnosis. Please try again.", failing_test: null, issues: [], root_cause: null, improvements: [] });
+          setProgressStep("Error — try again.");
+          toast.error("AI returned an incomplete result. Please try again.");
+          return;
+        }
         setDiagnosis(diagData.diagnosis);
-        setProgressStep("Diagnosis complete.");
-        toast.success("🔍 Diagnosis complete!");
         return;
       }
 
@@ -89,12 +93,20 @@ const Index = () => {
       const { data: diagData, error: diagError } = await supabase.functions.invoke("diagnose-bug", { body: { buggyCode, correctCode, language: detectedLanguage, syntaxErrors: null, executionResults: execData, runId } });
       if (diagError) throw new Error(diagError.message || "Diagnosis failed");
       if (diagData?.error) throw new Error(diagData.error);
+      if (!diagData?.diagnosis || !diagData.diagnosis.scenario) {
+        setDiagnosis({ scenario: "all_correct", verdict: "Error: AI returned no diagnosis. Please try again.", failing_test: null, issues: [], root_cause: null, improvements: [] });
+        setProgressStep("Error — try again.");
+        toast.error("AI returned an incomplete result. Please try again.");
+        return;
+      }
       setDiagnosis(diagData.diagnosis);
       setProgressStep("Diagnosis complete.");
       toast.success("🔍 Diagnosis complete!");
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Analysis failed");
-      setProgressStep("");
+      const message = err instanceof Error ? err.message : "Analysis failed";
+      toast.error(message);
+      setDiagnosis({ scenario: "syntax_error", verdict: `Error: ${message}. Please try again.`, failing_test: null, issues: [], root_cause: null, improvements: [] });
+      setProgressStep("Error — try again.");
     } finally {
       setLoading(false);
     }
@@ -114,10 +126,20 @@ const Index = () => {
       const { data: execData, error: execError } = await supabase.functions.invoke("execute-code", { body: { buggyCode, correctCode, language: "cpp", testCases, runId: null } });
       if (execError) throw new Error(execError.message || "Execution failed");
       if (execData?.error) throw new Error(execData.error);
+      if (execData?.retry_branch1) throw new Error(execData.message || "Compilation error. Check your code.");
       const result = execData?.results?.[0];
-      if (!result) throw new Error("No result returned");
+      if (!result) throw new Error("No result returned. Please try again.");
 
-      if (result.is_failing) {
+      // Handle runtime errors in buggy code
+      if (result.buggy_status && result.buggy_status !== "OK") {
+        setDiagnosis({
+          scenario: "syntax_error", verdict: `Runtime error: ${result.buggy_status}`,
+          failing_test: { input: result.input, buggy_output: result.buggy_stderr || result.buggy_output || "No output", correct_output: result.correct_output || "N/A" },
+          issues: [{ type: "runtime", line: null, description: `Your code encountered: ${result.buggy_status}`, fix: "Check for array bounds, division by zero, or stack overflow." }],
+          root_cause: result.buggy_stderr || result.buggy_status, improvements: [],
+        });
+        toast.error(`Runtime error: ${result.buggy_status}`);
+      } else if (result.is_failing) {
         setDiagnosis({
           scenario: "logic_bug", verdict: "Your code produces incorrect output for this test case.",
           failing_test: { input: result.input, buggy_output: result.buggy_output, correct_output: result.correct_output },
@@ -133,7 +155,9 @@ const Index = () => {
         toast.success("Test passed — outputs match!");
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Execution failed");
+      const message = err instanceof Error ? err.message : "Execution failed";
+      toast.error(message);
+      setDiagnosis({ scenario: "syntax_error", verdict: `Error: ${message}. Please try again.`, failing_test: null, issues: [], root_cause: null, improvements: [] });
     } finally {
       setSingleTestLoading(false);
     }
