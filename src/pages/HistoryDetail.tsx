@@ -85,11 +85,16 @@ export default function HistoryDetail() {
 
     const fetchRun = async () => {
       setLoading(true);
-      const [{ data: runData, error: runError }, { data: tcData }] = await Promise.all([
+      const [{ data: runData, error: runError }, { data: tcData }, { data: chatData }] = await Promise.all([
         supabase.from("runs").select("*").eq("id", id).eq("user_id", user.id).single(),
         supabase
           .from("test_cases")
           .select("*")
+          .eq("run_id", id)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("chat_messages")
+          .select("role, content, created_at")
           .eq("run_id", id)
           .order("created_at", { ascending: true }),
       ]);
