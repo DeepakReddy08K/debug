@@ -284,9 +284,10 @@ export default function HistoryDetail() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {tc.output_buggy !== null && (
                         <div>
-                          <span className="text-[10px] font-mono text-muted-foreground uppercase">
-                            Your Output
-                          </span>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono text-muted-foreground uppercase">Your Output</span>
+                            <CopyButton text={tc.output_buggy} />
+                          </div>
                           <div
                             className={`mt-0.5 p-2 rounded border text-xs font-mono ${
                               tc.is_failing
