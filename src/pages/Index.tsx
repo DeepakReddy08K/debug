@@ -313,7 +313,7 @@ const Index = () => {
         </div>
 
         {/* Row 3: Diagnosis */}
-        <div className="mt-4">
+        <div className="mt-10 pt-4 border-t border-border">
           <DiagnosisDisplay diagnosis={diagnosis} />
         </div>
       </div>
