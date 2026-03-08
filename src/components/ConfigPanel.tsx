@@ -100,32 +100,18 @@ export default function ConfigPanel({
         {/* Constraints */}
         <div className="space-y-3">
           <Label className="text-foreground text-sm font-semibold">Constraints</Label>
-          <div className="space-y-2">
-            <Label className="text-muted-foreground text-xs">Max value of N</Label>
-            <Input
-              type="number"
-              placeholder="e.g., 100000"
-              value={maxN}
-              onChange={(e) => onMaxNChange(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-muted-foreground text-xs">Number of test cases T</Label>
-            <Input
-              type="number"
-              placeholder="e.g., 10"
-              value={testCasesT}
-              onChange={(e) => onTestCasesTChange(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-muted-foreground text-xs">Value range</Label>
-            <Input
-              placeholder="e.g., 1 to 10^9"
-              value={valueRange}
-              onChange={(e) => onValueRangeChange(e.target.value)}
-            />
-          </div>
+          {currentConstraints.map((c) => (
+            <div key={c.key} className="space-y-2">
+              <Label className="text-muted-foreground text-xs">{c.label}</Label>
+              <Input
+                type={c.type === "number" ? "number" : "text"}
+                placeholder={c.placeholder}
+                className="text-foreground"
+                value={constraints[c.key] || ""}
+                onChange={(e) => onConstraintChange(c.key, e.target.value)}
+              />
+            </div>
+          ))}
         </div>
 
         {/* Action Buttons */}
