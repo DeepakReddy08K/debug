@@ -107,6 +107,7 @@ export default function HistoryDetail() {
 
       setRun(runData as Run);
       setTestCases((tcData || []) as TestCase[]);
+      setChatMessages((chatData || []) as any[]);
       setLoading(false);
     };
 
