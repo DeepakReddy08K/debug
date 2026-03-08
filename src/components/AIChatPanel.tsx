@@ -206,8 +206,8 @@ export default function AIChatPanel({ runContext, className = "" }: AIChatPanelP
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 min-h-0">
-        <div ref={scrollRef} className="p-3 space-y-3">
+      <div className="flex-1 min-h-0 overflow-y-auto" ref={scrollRef}>
+        <div className="p-3 space-y-3">
           {messages.length === 0 && (
             <div className="text-center py-8 space-y-2">
               <Bot className="h-8 w-8 text-muted-foreground/40 mx-auto" />
@@ -228,7 +228,7 @@ export default function AIChatPanel({ runContext, className = "" }: AIChatPanelP
                 </div>
               )}
               <div
-                className={`max-w-[85%] rounded-lg px-3 py-2 text-xs leading-relaxed break-words overflow-hidden ${
+                className={`max-w-[85%] rounded-lg px-3 py-2 text-xs leading-relaxed break-words ${
                   msg.role === "user"
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-foreground"
@@ -239,7 +239,7 @@ export default function AIChatPanel({ runContext, className = "" }: AIChatPanelP
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                   </div>
                 ) : (
-                  msg.content
+                  <span className="whitespace-pre-wrap">{msg.content}</span>
                 )}
               </div>
               {msg.role === "user" && (
@@ -261,7 +261,7 @@ export default function AIChatPanel({ runContext, className = "" }: AIChatPanelP
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Input */}
       <div className="border-t border-border p-2 shrink-0">
