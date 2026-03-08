@@ -7,6 +7,7 @@ import CodeEditorPanel from "@/components/CodeEditorPanel";
 import ConfigPanel from "@/components/ConfigPanel";
 import RunSingleTestPanel from "@/components/RunSingleTestPanel";
 import DiagnosisDisplay from "@/components/DiagnosisDisplay";
+import AIChatPanel from "@/components/AIChatPanel";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
