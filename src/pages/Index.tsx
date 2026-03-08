@@ -175,7 +175,7 @@ const Index = () => {
         </div>
 
         {/* Row 2: Config + Run Single Test */}
-        <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border">
+        <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border md:h-[280px]">
           <div className="border-b md:border-b-0 md:border-r border-border">
             <ConfigPanel
               additionalInfo={additionalInfo}
