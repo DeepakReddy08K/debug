@@ -98,14 +98,14 @@ export default function DiagnosisDisplay({ diagnosis }: DiagnosisDisplayProps) {
   const Icon = config.icon;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col animate-fade-in">
       <div className="flex items-center border-b border-border bg-secondary/30 px-4 py-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Diagnosis
         </span>
       </div>
       <ScrollArea className="flex-1">
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-4 animate-fade-in">
           {/* Verdict */}
           <div className={`rounded-lg border p-3 ${config.bg}`}>
             <div className="flex items-start gap-2">
