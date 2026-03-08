@@ -60,7 +60,14 @@ export default function Signup() {
     });
     setLoading(false);
     if (error) {
-      toast.error(error.message);
+      // Handle unique constraint violation for username
+      if (error.message?.includes("duplicate key") || error.message?.includes("profiles_username_key")) {
+        toast.error("Username is already taken. Please choose another.");
+      } else if (error.message?.includes("password") && error.message?.includes("leaked")) {
+        toast.error("This password has been found in a data breach. Please choose a stronger password.");
+      } else {
+        toast.error(error.message);
+      }
     } else {
       toast.success("Check your email for a verification link!");
     }
