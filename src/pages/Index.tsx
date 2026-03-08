@@ -82,7 +82,7 @@ const Index = () => {
       if (runId) setCurrentRunId(runId);
 
       setProgressStep("Step 2/5: Checking for syntax & runtime errors...");
-      const { data: syntaxData, error: syntaxError } = await supabase.functions.invoke("check-syntax", { body: { buggyCode, correctCode, language: detectedLanguage } });
+      const { data: syntaxData, error: syntaxError } = await supabase.functions.invoke("check-syntax", { body: { buggyCode: cleanBuggy, correctCode: cleanCorrect, language: detectedLanguage } });
       if (syntaxError) throw new Error(syntaxError.message || "Syntax check failed");
       if (syntaxData?.error) throw new Error(syntaxData.error);
       const syntaxResult = syntaxData?.result;
