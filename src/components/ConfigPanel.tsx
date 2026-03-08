@@ -3,13 +3,6 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Loader2, Search } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 interface ConfigPanelProps {
   additionalInfo: string;
@@ -17,8 +10,6 @@ interface ConfigPanelProps {
   onFindFailing: () => void;
   loading: boolean;
   progressStep?: string;
-  language: string;
-  onLanguageChange: (val: string) => void;
 }
 
 export default function ConfigPanel({
@@ -27,8 +18,6 @@ export default function ConfigPanel({
   onFindFailing,
   loading,
   progressStep,
-  language,
-  onLanguageChange,
 }: ConfigPanelProps) {
   return (
     <div className="flex flex-col h-full">
@@ -38,33 +27,16 @@ export default function ConfigPanel({
         </span>
       </div>
       <div className="flex flex-col flex-1 p-4">
-        <div className="space-y-3 flex-1">
-          <div className="space-y-1.5">
-            <Label className="text-foreground text-sm">Language</Label>
-            <Select value={language} onValueChange={onLanguageChange}>
-              <SelectTrigger className="h-9 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="cpp">C++</SelectItem>
-                <SelectItem value="python">Python</SelectItem>
-                <SelectItem value="java">Java</SelectItem>
-                <SelectItem value="javascript">JavaScript</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5 flex-1">
-            <Label className="text-foreground text-sm">Problem Details (Optional)</Label>
-            <Textarea
-              placeholder={`• Problem constraints (e.g., 1 ≤ N ≤ 10^5)\n• Problem statement\n• Input/output format`}
-              className="min-h-[80px] h-full font-mono text-xs text-foreground resize-none"
-              value={additionalInfo}
-              onChange={(e) => onAdditionalInfoChange(e.target.value)}
-            />
-          </div>
+        <div className="space-y-1.5 flex-1">
+          <Label className="text-foreground text-sm">Problem Details (Optional)</Label>
+          <Textarea
+            placeholder={`• Problem constraints (e.g., 1 ≤ N ≤ 10^5)\n• Problem statement\n• Input/output format`}
+            className="min-h-[100px] h-full font-mono text-xs text-foreground resize-none"
+            value={additionalInfo}
+            onChange={(e) => onAdditionalInfoChange(e.target.value)}
+          />
         </div>
 
-        {/* Progress indicator */}
         {loading && progressStep && (
           <div className="space-y-2 rounded-md border border-border bg-secondary/20 p-3 mt-3 animate-fade-in">
             <div className="flex items-center gap-2">
@@ -91,7 +63,7 @@ export default function ConfigPanel({
           {loading ? "Processing..." : "Find Failing Test Case"}
         </Button>
         <p className="text-[11px] text-muted-foreground mt-1.5">
-          Language & input format are used for code execution
+          AI auto-detects language and input format
         </p>
       </div>
     </div>

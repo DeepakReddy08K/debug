@@ -22,7 +22,7 @@ const Index = () => {
   const [diagnosis, setDiagnosis] = useState<any>(null);
   const [singleTestLoading, setSingleTestLoading] = useState(false);
   const [currentRunId, setCurrentRunId] = useState<string | undefined>(undefined);
-  const [language, setLanguage] = useState("cpp");
+  
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem("theme") !== "light";
   });
@@ -55,7 +55,7 @@ const Index = () => {
       if (!analysisData?.schema) throw new Error("No analysis result");
 
       const schema = analysisData.schema;
-      const detectedLanguage = schema?.problem_meta?.problem_type || language;
+      const detectedLanguage = schema?.problem_meta?.problem_type || "cpp";
 
       const { data: runData, error: insertError } = await supabase.from("runs").insert({
         user_id: user!.id, buggy_code: buggyCode, correct_code: correctCode, language: detectedLanguage,
@@ -148,7 +148,7 @@ const Index = () => {
     try {
       const testCases = [{ id: null, input: testInput }];
       toast.info("Running your test case...");
-      const { data: execData, error: execError } = await supabase.functions.invoke("execute-code", { body: { buggyCode, correctCode, language, testCases, runId: null } });
+      const { data: execData, error: execError } = await supabase.functions.invoke("execute-code", { body: { buggyCode, correctCode, language: "cpp", testCases, runId: null } });
       if (execError) throw new Error(execError.message || "Execution failed");
       if (execData?.error) throw new Error(execData.error);
       if (execData?.retry_branch1) throw new Error(execData.message || "Compilation error. Check your code.");
@@ -199,7 +199,7 @@ const Index = () => {
         toast.info("Runtime error detected — getting AI diagnosis...");
         const { data: diagData, error: diagError } = await supabase.functions.invoke("diagnose-bug", {
           body: {
-            buggyCode, correctCode, language,
+            buggyCode, correctCode, language: "cpp",
             syntaxErrors: null,
             executionResults: {
               results: [result],
@@ -289,10 +289,10 @@ const Index = () => {
         {/* Row 1: Code Editors */}
         <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border" style={{ height: "clamp(300px, 50vh, 560px)" }}>
           <div className="h-[280px] md:h-full border-b md:border-b-0 md:border-r border-border">
-            <CodeEditorPanel label="Your Code (Buggy)" language={language} value={buggyCode} onChange={setBuggyCode} />
+            <CodeEditorPanel label="Your Code (Buggy)" language="cpp" value={buggyCode} onChange={setBuggyCode} />
           </div>
           <div className="h-[280px] md:h-full">
-            <CodeEditorPanel label="Correct Code (Reference)" language={language} value={correctCode} onChange={setCorrectCode} />
+            <CodeEditorPanel label="Correct Code (Reference)" language="cpp" value={correctCode} onChange={setCorrectCode} />
           </div>
         </div>
 
@@ -305,8 +305,6 @@ const Index = () => {
               onFindFailing={handleFindFailing}
               loading={loading}
               progressStep={progressStep}
-              language={language}
-              onLanguageChange={setLanguage}
             />
           </div>
           <div>
@@ -322,7 +320,7 @@ const Index = () => {
       <AIChatPanel
         runContext={{
           runId: currentRunId,
-          language,
+          language: "cpp",
           buggyCode,
           correctCode,
           diagnosis,
