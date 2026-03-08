@@ -46,7 +46,7 @@ export type Database = {
       }
       runs: {
         Row: {
-          ai_diagnosis: string | null
+          ai_diagnosis: Json | null
           buggy_code: string
           constraints_json: Json | null
           correct_code: string
@@ -58,10 +58,11 @@ export type Database = {
           output_correct: string | null
           sample_input: string | null
           status: string
+          syntax_check: Json | null
           user_id: string
         }
         Insert: {
-          ai_diagnosis?: string | null
+          ai_diagnosis?: Json | null
           buggy_code: string
           constraints_json?: Json | null
           correct_code: string
@@ -73,10 +74,11 @@ export type Database = {
           output_correct?: string | null
           sample_input?: string | null
           status?: string
+          syntax_check?: Json | null
           user_id: string
         }
         Update: {
-          ai_diagnosis?: string | null
+          ai_diagnosis?: Json | null
           buggy_code?: string
           constraints_json?: Json | null
           correct_code?: string
@@ -88,6 +90,7 @@ export type Database = {
           output_correct?: string | null
           sample_input?: string | null
           status?: string
+          syntax_check?: Json | null
           user_id?: string
         }
         Relationships: []
