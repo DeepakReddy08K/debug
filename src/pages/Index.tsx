@@ -50,7 +50,10 @@ const Index = () => {
       const syntaxResult = syntaxData?.result;
 
       if (runId && syntaxResult) {
-        await supabase.from("runs").update({ ai_diagnosis: JSON.stringify(syntaxResult), status: syntaxResult.has_errors ? "syntax_errors_found" : "syntax_clean" }).eq("id", runId);
+        await supabase.from("runs").update({
+          syntax_check: syntaxResult,
+          status: syntaxResult.has_errors ? "syntax_errors_found" : "syntax_clean",
+        }).eq("id", runId);
       }
 
       if (syntaxResult?.has_errors) {

@@ -190,7 +190,7 @@ serve(async (req) => {
       await supabase
         .from("runs")
         .update({
-          ai_diagnosis: JSON.stringify(parsed),
+          ai_diagnosis: parsed,
           status: "diagnosed",
         })
         .eq("id", runId);
