@@ -125,7 +125,7 @@ const Index = () => {
         if (dbTestCases && dbTestCases.length > 0) storedTestCases = dbTestCases.map((tc) => ({ id: tc.id, input: tc.input_data }));
       }
 
-      const { data: execData, error: execError } = await supabase.functions.invoke("execute-code", { body: { buggyCode, correctCode, language: detectedLanguage, testCases: storedTestCases, runId } });
+      const { data: execData, error: execError } = await supabase.functions.invoke("execute-code", { body: { buggyCode: cleanBuggy, correctCode: cleanCorrect, language: detectedLanguage, testCases: storedTestCases, runId } });
       if (execError) throw new Error(execError.message || "Code execution failed");
       if (execData?.retry_branch1) { toast.error(`Execution error: ${execData.message}. Restarting...`); setLoading(false); handleFindFailing(); return; }
       if (execData?.error) throw new Error(execData.error);
