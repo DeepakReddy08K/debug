@@ -65,7 +65,7 @@ const Index = () => {
 
     try {
       setProgressStep("Step 1/5: Analyzing problem structure...");
-      const { data: analysisData, error: analysisError } = await supabase.functions.invoke("analyze-problem", { body: { buggyCode, correctCode, additionalInfo } });
+      const { data: analysisData, error: analysisError } = await supabase.functions.invoke("analyze-problem", { body: { buggyCode: cleanBuggy, correctCode: cleanCorrect, additionalInfo } });
       if (analysisError) throw new Error(analysisError.message || "Analysis failed");
       if (analysisData?.error) throw new Error(analysisData.error);
       if (!analysisData?.schema) throw new Error("No analysis result");
