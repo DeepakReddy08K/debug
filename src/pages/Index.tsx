@@ -66,7 +66,7 @@ const Index = () => {
           <ResizablePanel defaultSize={35} minSize={20}>
             <CodeEditorPanel
               label="Your Code (Buggy)"
-              language={language}
+              language="cpp"
               value={buggyCode}
               onChange={setBuggyCode}
             />
@@ -78,7 +78,7 @@ const Index = () => {
           <ResizablePanel defaultSize={35} minSize={20}>
             <CodeEditorPanel
               label="Correct Code (Reference)"
-              language={language}
+              language="cpp"
               value={correctCode}
               onChange={setCorrectCode}
             />
@@ -86,15 +86,11 @@ const Index = () => {
 
           <ResizableHandle withHandle />
 
-          {/* Panel 3: Config & Input */}
+          {/* Panel 3: Additional Info */}
           <ResizablePanel defaultSize={30} minSize={20}>
             <ConfigPanel
-              language={language}
-              onLanguageChange={handleLanguageChange}
-              sampleInput={sampleInput}
-              onSampleInputChange={setSampleInput}
-              constraints={constraints}
-              onConstraintChange={handleConstraintChange}
+              additionalInfo={additionalInfo}
+              onAdditionalInfoChange={setAdditionalInfo}
               onFindFailing={handleFindFailing}
               onRunSingle={handleRunSingle}
               loading={loading}
