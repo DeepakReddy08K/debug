@@ -40,37 +40,71 @@ function extractJsonFromResponse(response: string): any {
     .replace(/```\s*/g, "")
     .trim();
 
-  const jsonStart = cleaned.search(/[\{\[]/);
-  const lastBrace = cleaned.lastIndexOf("}");
-  const lastBracket = cleaned.lastIndexOf("]");
-  const jsonEnd = Math.max(lastBrace, lastBracket);
-
-  if (jsonStart === -1 || jsonEnd === -1) {
-    throw new Error("No JSON object found in response");
-  }
-
-  cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
-
+  // First try direct parse
   try {
     return JSON.parse(cleaned);
   } catch {
-    cleaned = cleaned
-      .replace(/,\s*}/g, "}")
-      .replace(/,\s*]/g, "]")
-      .replace(/[\x00-\x1F\x7F]/g, (c) => c === "\n" || c === "\t" ? c : "");
-
-    const openBraces = (cleaned.match(/{/g) || []).length;
-    const closeBraces = (cleaned.match(/}/g) || []).length;
-    const openBrackets = (cleaned.match(/\[/g) || []).length;
-    const closeBrackets = (cleaned.match(/]/g) || []).length;
-
-    for (let i = 0; i < openBrackets - closeBrackets; i++) cleaned += "]";
-    for (let i = 0; i < openBraces - closeBraces; i++) cleaned += "}";
-
-    cleaned = cleaned.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
-
-    return JSON.parse(cleaned);
+    // continue to repair
   }
+
+  // Extract complete test case objects using a greedy approach
+  // Find the test_cases array and extract all complete {...} objects
+  const testCasesMatch = cleaned.match(/"test_cases"\s*:\s*\[/);
+  if (testCasesMatch && testCasesMatch.index !== undefined) {
+    const arrayStart = testCasesMatch.index + testCasesMatch[0].length;
+    const completeObjects: string[] = [];
+    let depth = 0;
+    let objStart = -1;
+
+    for (let i = arrayStart; i < cleaned.length; i++) {
+      const ch = cleaned[i];
+      if (ch === '{') {
+        if (depth === 0) objStart = i;
+        depth++;
+      } else if (ch === '}') {
+        depth--;
+        if (depth === 0 && objStart !== -1) {
+          const obj = cleaned.substring(objStart, i + 1);
+          try {
+            JSON.parse(obj); // validate it's complete
+            completeObjects.push(obj);
+          } catch {
+            // incomplete object, skip
+          }
+          objStart = -1;
+        }
+      }
+    }
+
+    if (completeObjects.length > 0) {
+      const reconstructed = `{"test_cases":[${completeObjects.join(",")}],"total_count":${completeObjects.length},"generation_notes":"Recovered from truncated response"}`;
+      return JSON.parse(reconstructed);
+    }
+  }
+
+  // Fallback: find JSON boundaries and try bracket repair
+  const jsonStart = cleaned.search(/[\{\[]/);
+  const jsonEnd = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+  if (jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON found in response");
+
+  cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
+  cleaned = cleaned
+    .replace(/,\s*}/g, "}")
+    .replace(/,\s*]/g, "]")
+    .replace(/[\x00-\x1F\x7F]/g, (c) => c === "\n" || c === "\t" ? c : "");
+
+  let braces = 0, brackets = 0;
+  for (const ch of cleaned) {
+    if (ch === '{') braces++;
+    if (ch === '}') braces--;
+    if (ch === '[') brackets++;
+    if (ch === ']') brackets--;
+  }
+  while (brackets > 0) { cleaned += ']'; brackets--; }
+  while (braces > 0) { cleaned += '}'; braces--; }
+  cleaned = cleaned.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
+
+  return JSON.parse(cleaned);
 }
 
 // Trim schema to reduce prompt size — keep only essential info
