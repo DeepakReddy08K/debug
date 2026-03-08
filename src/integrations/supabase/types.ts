@@ -14,7 +14,119 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          auth_provider: string | null
+          avatar_url: string | null
+          created_at: string
+          email: string
+          id: string
+          name: string | null
+        }
+        Insert: {
+          auth_provider?: string | null
+          avatar_url?: string | null
+          created_at?: string
+          email: string
+          id: string
+          name?: string | null
+        }
+        Update: {
+          auth_provider?: string | null
+          avatar_url?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          name?: string | null
+        }
+        Relationships: []
+      }
+      runs: {
+        Row: {
+          ai_diagnosis: string | null
+          buggy_code: string
+          constraints_json: Json | null
+          correct_code: string
+          created_at: string
+          failing_input: string | null
+          id: string
+          language: string
+          output_buggy: string | null
+          output_correct: string | null
+          sample_input: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          ai_diagnosis?: string | null
+          buggy_code: string
+          constraints_json?: Json | null
+          correct_code: string
+          created_at?: string
+          failing_input?: string | null
+          id?: string
+          language?: string
+          output_buggy?: string | null
+          output_correct?: string | null
+          sample_input?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          ai_diagnosis?: string | null
+          buggy_code?: string
+          constraints_json?: Json | null
+          correct_code?: string
+          created_at?: string
+          failing_input?: string | null
+          id?: string
+          language?: string
+          output_buggy?: string | null
+          output_correct?: string | null
+          sample_input?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      test_cases: {
+        Row: {
+          created_at: string
+          id: string
+          input_data: string
+          is_failing: boolean | null
+          output_buggy: string | null
+          output_correct: string | null
+          run_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          input_data: string
+          is_failing?: boolean | null
+          output_buggy?: string | null
+          output_correct?: string | null
+          run_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          input_data?: string
+          is_failing?: boolean | null
+          output_buggy?: string | null
+          output_correct?: string | null
+          run_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_cases_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
