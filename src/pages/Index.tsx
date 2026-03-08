@@ -20,6 +20,17 @@ const Index = () => {
   const [progressStep, setProgressStep] = useState("");
   const [diagnosis, setDiagnosis] = useState<any>(null);
   const [singleTestLoading, setSingleTestLoading] = useState(false);
+  const [isDark, setIsDark] = useState(() => {
+    return localStorage.getItem("theme") !== "light";
+  });
+
+  const toggleTheme = () => {
+    setIsDark((prev) => {
+      const next = !prev;
+      localStorage.setItem("theme", next ? "dark" : "light");
+      return next;
+    });
+  };
 
   const handleFindFailing = async () => {
     if (!buggyCode.trim()) { toast.error("Please paste your buggy code"); return; }
