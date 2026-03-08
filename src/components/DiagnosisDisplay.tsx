@@ -1,5 +1,6 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import CollapsibleText from "@/components/CollapsibleText";
 import { AlertTriangle, CheckCircle, XCircle, Lightbulb, ArrowRight, FileQuestion } from "lucide-react";
 
 interface DiagnosisIssue {
