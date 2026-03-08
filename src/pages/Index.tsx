@@ -11,56 +11,12 @@ import CodeEditorPanel from "@/components/CodeEditorPanel";
 import ConfigPanel from "@/components/ConfigPanel";
 import { toast } from "sonner";
 
-const DEFAULT_CODE: Record<string, string> = {
-  cpp: `#include <bits/stdc++.h>
-using namespace std;
-
-int main() {
-    int n;
-    cin >> n;
-    // Your solution here
-    return 0;
-}`,
-  python: `n = int(input())
-# Your solution here
-`,
-  java: `import java.util.*;
-
-public class Main {
-    public static void main(String[] args) {
-        Scanner sc = new Scanner(System.in);
-        int n = sc.nextInt();
-        // Your solution here
-    }
-}`,
-  javascript: `const readline = require('readline');
-const rl = readline.createInterface({ input: process.stdin });
-
-rl.on('line', (line) => {
-    const n = parseInt(line);
-    // Your solution here
-});`,
-};
-
 const Index = () => {
   const { user, signOut } = useAuth();
-  const [language, setLanguage] = useState("cpp");
-  const [buggyCode, setBuggyCode] = useState(DEFAULT_CODE.cpp);
+  const [buggyCode, setBuggyCode] = useState("");
   const [correctCode, setCorrectCode] = useState("");
-  const [sampleInput, setSampleInput] = useState("");
-  const [constraints, setConstraints] = useState<Record<string, string>>({});
+  const [additionalInfo, setAdditionalInfo] = useState("");
   const [loading, setLoading] = useState(false);
-
-  const handleConstraintChange = (key: string, val: string) => {
-    setConstraints((prev) => ({ ...prev, [key]: val }));
-  };
-
-  const handleLanguageChange = (lang: string) => {
-    setLanguage(lang);
-    if (!buggyCode || Object.values(DEFAULT_CODE).includes(buggyCode)) {
-      setBuggyCode(DEFAULT_CODE[lang] || "");
-    }
-  };
 
   const handleFindFailing = () => {
     if (!buggyCode.trim()) {
@@ -110,7 +66,7 @@ const Index = () => {
           <ResizablePanel defaultSize={35} minSize={20}>
             <CodeEditorPanel
               label="Your Code (Buggy)"
-              language={language}
+              language="cpp"
               value={buggyCode}
               onChange={setBuggyCode}
             />
@@ -122,7 +78,7 @@ const Index = () => {
           <ResizablePanel defaultSize={35} minSize={20}>
             <CodeEditorPanel
               label="Correct Code (Reference)"
-              language={language}
+              language="cpp"
               value={correctCode}
               onChange={setCorrectCode}
             />
@@ -130,15 +86,11 @@ const Index = () => {
 
           <ResizableHandle withHandle />
 
-          {/* Panel 3: Config & Input */}
+          {/* Panel 3: Additional Info */}
           <ResizablePanel defaultSize={30} minSize={20}>
             <ConfigPanel
-              language={language}
-              onLanguageChange={handleLanguageChange}
-              sampleInput={sampleInput}
-              onSampleInputChange={setSampleInput}
-              constraints={constraints}
-              onConstraintChange={handleConstraintChange}
+              additionalInfo={additionalInfo}
+              onAdditionalInfoChange={setAdditionalInfo}
               onFindFailing={handleFindFailing}
               onRunSingle={handleRunSingle}
               loading={loading}
