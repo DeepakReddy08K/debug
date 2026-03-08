@@ -134,9 +134,9 @@ export default function DiagnosisDisplay({ diagnosis }: DiagnosisDisplayProps) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
                     <span className="text-[10px] text-red-400 font-mono">YOUR OUTPUT</span>
-                    <pre className="text-xs text-red-300 bg-red-500/10 rounded p-1.5 mt-0.5 overflow-x-auto whitespace-pre-wrap break-all">
-                      {diagnosis.failing_test.buggy_output}
-                    </pre>
+                    <div className="text-xs text-red-300 bg-red-500/10 rounded p-1.5 mt-0.5">
+                      <CollapsibleText text={diagnosis.failing_test.buggy_output} className="text-xs font-mono" maxLines={4} maxChars={200} />
+                    </div>
                   </div>
                   <div>
                     <span className="text-[10px] text-green-400 font-mono">EXPECTED</span>
