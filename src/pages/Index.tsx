@@ -199,7 +199,7 @@ const Index = () => {
         toast.info("Runtime error detected — getting AI diagnosis...");
         const { data: diagData, error: diagError } = await supabase.functions.invoke("diagnose-bug", {
           body: {
-            buggyCode, correctCode, language: "cpp",
+            buggyCode, correctCode, language,
             syntaxErrors: null,
             executionResults: {
               results: [result],
