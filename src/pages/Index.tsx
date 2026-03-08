@@ -49,6 +49,11 @@ const Index = () => {
   const [correctCode, setCorrectCode] = useState("");
   const [sampleInput, setSampleInput] = useState("");
   const [constraints, setConstraints] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+
+  const handleConstraintChange = (key: string, val: string) => {
+    setConstraints((prev) => ({ ...prev, [key]: val }));
+  };
 
   const handleLanguageChange = (lang: string) => {
     setLanguage(lang);
