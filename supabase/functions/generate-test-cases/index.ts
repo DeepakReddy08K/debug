@@ -7,43 +7,32 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_PROMPT = `You are an expert test case generator for competitive programming problems. Given a JSON schema describing a problem's input structure, constraints, and test case generation strategy, you must generate a comprehensive set of test cases.
+const SYSTEM_PROMPT = `You are a test case generator for competitive programming. Given a problem schema, generate 8-10 test cases.
 
-You MUST respond with ONLY valid JSON — no markdown, no explanation, no code fences.
+RESPOND WITH ONLY VALID JSON. No markdown, no code fences, no explanation.
 
-CRITICAL RULES:
-- Every "input" field must contain ONLY the literal test input string with \\n for newlines.
-- NEVER use code expressions, Python snippets, string concatenation, or any programming constructs in JSON values.
-- For large test cases, generate the ACTUAL numbers directly. If a test case would be too large to write out, use a SMALLER size (e.g., N=100 instead of N=200000) and note it in the description.
-- Keep total response under 4000 tokens. Prefer fewer, well-crafted test cases over many.
+CRITICAL:
+- Every "input" value must be a LITERAL string with \\n for newlines.
+- NEVER use Python/code expressions (no map, join, range, lambda, list comprehensions).
+- Keep N ≤ 200 for all test cases. Write out ALL numbers literally.
+- Keep total response SHORT (under 3000 tokens).
 
-The JSON must follow this exact structure:
+JSON format:
 {
   "test_cases": [
-    {
-      "category": "string",
-      "description": "string",
-      "input": "string - the LITERAL input text with \\n for newlines, NO code"
-    }
+    { "category": "string", "description": "string", "input": "literal string with \\n" }
   ],
   "total_count": number,
   "generation_notes": "string"
 }
 
-Rules:
-- Generate between 10-15 test cases covering ALL categories from the schema's test_case_generation_strategy.
-- Each test case's input MUST strictly follow the input_structure format from the schema.
-- Respect ALL constraints (min/max values, array lengths, data types).
-- Include at minimum: 
-  * 2-3 trivial/small cases (n=1, n=2)
-  * 2-3 edge cases (sorted, reverse sorted, etc.)
-  * 2-3 boundary cases (min/max constraints)
-  * 3-5 medium random cases
-  * 1-2 stress test cases (use moderate sizes like N=50-500 with actual numbers written out)
-- For multi_test_case format, each test case input should include the "t" line.
-- Ensure inputs are valid — no constraint violations, correct separators, correct number of elements.
-- The input string should use \\n between lines.
-- DO NOT generate test cases with N > 500 since you must write out all numbers literally.`;
+Coverage (8-10 tests total):
+- 2-3 small/trivial (N=1 to 5)
+- 2-3 edge cases (boundary values, sorted, reverse)
+- 2-3 medium random (N=20 to 100)
+- 1 moderate stress (N=100 to 200, all numbers written out)
+
+For multi_test_case format, include "t" line. Respect all constraints. No constraint violations.`;
 
 function extractJsonFromResponse(response: string): any {
   let cleaned = response
@@ -65,27 +54,42 @@ function extractJsonFromResponse(response: string): any {
   try {
     return JSON.parse(cleaned);
   } catch {
-    // Fix common issues: trailing commas, control chars, truncated arrays
     cleaned = cleaned
       .replace(/,\s*}/g, "}")
       .replace(/,\s*]/g, "]")
       .replace(/[\x00-\x1F\x7F]/g, (c) => c === "\n" || c === "\t" ? c : "");
 
-    // If JSON is truncated, try to close it
     const openBraces = (cleaned.match(/{/g) || []).length;
     const closeBraces = (cleaned.match(/}/g) || []).length;
     const openBrackets = (cleaned.match(/\[/g) || []).length;
     const closeBrackets = (cleaned.match(/]/g) || []).length;
 
-    // Close unclosed brackets/braces
     for (let i = 0; i < openBrackets - closeBrackets; i++) cleaned += "]";
     for (let i = 0; i < openBraces - closeBraces; i++) cleaned += "}";
 
-    // Remove trailing comma before closing
     cleaned = cleaned.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
 
     return JSON.parse(cleaned);
   }
+}
+
+// Trim schema to reduce prompt size — keep only essential info
+function trimSchema(schema: any): any {
+  const trimmed: any = {};
+  if (schema.problem_meta) {
+    trimmed.problem_meta = { name: schema.problem_meta.name, problem_type: schema.problem_meta.problem_type };
+  }
+  if (schema.input_structure) {
+    trimmed.input_structure = schema.input_structure;
+  }
+  if (schema.output_structure) {
+    trimmed.output_structure = schema.output_structure;
+  }
+  // Include hint but skip verbose categories/examples
+  if (schema.ai_generation_prompt_hint) {
+    trimmed.hint = schema.ai_generation_prompt_hint;
+  }
+  return trimmed;
 }
 
 serve(async (req) => {
@@ -101,7 +105,6 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // Get auth header for DB operations
     const authHeader = req.headers.get("Authorization");
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -110,27 +113,42 @@ serve(async (req) => {
       global: { headers: authHeader ? { Authorization: authHeader } : {} },
     });
 
-    const userPrompt = `Generate test cases based on this problem schema:\n\n${JSON.stringify(schema, null, 2)}\n\nGenerate comprehensive test cases now. Make sure each input strictly follows the input_structure format.`;
+    const trimmedSchema = trimSchema(schema);
+    const userPrompt = `Generate test cases for this problem:\n\n${JSON.stringify(trimmedSchema, null, 2)}\n\nGenerate 8-10 diverse test cases. Each input must be a literal string. Keep N ≤ 200.`;
 
-    if (schema?.ai_generation_prompt_hint) {
-      // Use the hint from Branch 1 to guide generation
+    // 50-second timeout to stay within edge function limits
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 50000);
+
+    let response;
+    try {
+      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.4,
+          max_tokens: 4000,
+        }),
+        signal: controller.signal,
+      });
+    } catch (fetchErr) {
+      clearTimeout(timeout);
+      if (fetchErr instanceof DOMException && fetchErr.name === "AbortError") {
+        return new Response(JSON.stringify({ error: "AI took too long. Please try again." }), {
+          status: 504, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw fetchErr;
     }
-
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.5,
-      }),
-    });
+    clearTimeout(timeout);
 
     if (!response.ok) {
       if (response.status === 429) {
@@ -154,47 +172,45 @@ serve(async (req) => {
       });
     }
 
-    // Robust JSON extraction
     let parsed;
     try {
       parsed = extractJsonFromResponse(content);
     } catch {
+      console.error("Failed to parse AI response:", content.substring(0, 300));
       return new Response(JSON.stringify({ error: "AI returned invalid JSON", raw: content.substring(0, 500) }), {
         status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Filter out test cases with code expressions in input
+    // Filter out test cases with code expressions
     if (parsed.test_cases) {
       parsed.test_cases = parsed.test_cases.filter((tc: { input: string }) => {
-        const hasCode = /\b(map|join|range|lambda|for |import |list\()\b/.test(tc.input);
-        return !hasCode && typeof tc.input === "string" && tc.input.length < 50000;
+        if (typeof tc.input !== "string") return false;
+        if (tc.input.length > 50000) return false;
+        const hasCode = /\b(map|join|range|lambda|for |import |list\(|\.join\()\b/.test(tc.input);
+        return !hasCode;
       });
       parsed.total_count = parsed.test_cases.length;
     }
 
-    // Store test cases in database if runId is provided
-    if (runId && parsed.test_cases?.length > 0) {
+    if (!parsed.test_cases || parsed.test_cases.length === 0) {
+      return new Response(JSON.stringify({ error: "No valid test cases generated. Please try again." }), {
+        status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Store test cases in database
+    if (runId && parsed.test_cases.length > 0) {
       const testCaseRows = parsed.test_cases.map((tc: { input: string }) => ({
         run_id: runId,
         input_data: tc.input,
         is_failing: false,
       }));
 
-      const { error: insertError } = await supabase
-        .from("test_cases")
-        .insert(testCaseRows);
+      const { error: insertError } = await supabase.from("test_cases").insert(testCaseRows);
+      if (insertError) console.error("Failed to store test cases:", insertError);
 
-      if (insertError) {
-        console.error("Failed to store test cases:", insertError);
-        // Continue — return the test cases even if DB insert fails
-      }
-
-      // Update run status
-      await supabase
-        .from("runs")
-        .update({ status: "tests_generated" })
-        .eq("id", runId);
+      await supabase.from("runs").update({ status: "tests_generated" }).eq("id", runId);
     }
 
     return new Response(JSON.stringify({ result: parsed }), {
