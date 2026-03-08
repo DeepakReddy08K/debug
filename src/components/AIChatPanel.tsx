@@ -200,7 +200,7 @@ export default function AIChatPanel({ runContext, className = "" }: AIChatPanelP
           <Bot className="h-4 w-4 text-primary" />
           <span className="text-sm font-semibold text-foreground">Debug Assistant</span>
         </div>
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsOpen(false)}>
+        <Button variant="secondary" size="icon" className="h-7 w-7 border border-border" onClick={() => setIsOpen(false)}>
           <X className="h-4 w-4" />
         </Button>
       </div>
