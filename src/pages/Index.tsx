@@ -21,6 +21,7 @@ const Index = () => {
   const [progressStep, setProgressStep] = useState("");
   const [diagnosis, setDiagnosis] = useState<any>(null);
   const [singleTestLoading, setSingleTestLoading] = useState(false);
+  const [currentRunId, setCurrentRunId] = useState<string | undefined>(undefined);
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem("theme") !== "light";
   });
