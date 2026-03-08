@@ -57,6 +57,9 @@ const Index = () => {
     if (!buggyCode.trim()) { toast.error("Please paste your buggy code"); return; }
     if (!correctCode.trim()) { toast.error("Please paste the correct reference code"); return; }
 
+    const cleanBuggy = sanitizeCode(buggyCode);
+    const cleanCorrect = sanitizeCode(correctCode);
+
     setLoading(true);
     setDiagnosis(null);
 
