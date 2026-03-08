@@ -142,41 +142,41 @@ const Index = () => {
   return (
     <div className="dark flex h-screen flex-col bg-background">
       {/* Header */}
-      <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2">
+      <header className="flex shrink-0 items-center justify-between border-b border-border px-3 sm:px-4 py-2">
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
             <Bug className="h-3.5 w-3.5 text-primary-foreground" />
           </div>
           <span className="text-base font-bold text-foreground">Debug</span>
-          <span className="ml-1 rounded bg-secondary px-2 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">Beta</span>
+          <span className="ml-1 rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">Beta</span>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground text-xs">
+        <div className="flex items-center gap-1.5">
+          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground text-xs h-8">
             <History className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">History</span>
           </Button>
-          <span className="text-xs text-muted-foreground hidden md:inline">{user?.email}</span>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={signOut}>
+          <span className="text-xs text-muted-foreground hidden md:inline truncate max-w-[140px]">{user?.email}</span>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={signOut}>
             <LogOut className="h-3.5 w-3.5" />
           </Button>
         </div>
       </header>
 
-      {/* Main content */}
-      <div className="flex-1 min-h-0 overflow-auto">
-        {/* Row 1: Code Editors side by side */}
-        <div className="grid grid-cols-1 md:grid-cols-2 h-[50vh] md:h-[45vh] border-b border-border">
-          <div className="h-full border-b md:border-b-0 md:border-r border-border">
+      {/* Scrollable main area */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {/* Row 1: Code Editors */}
+        <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border" style={{ height: "clamp(280px, 42vh, 500px)" }}>
+          <div className="h-[280px] md:h-full border-b md:border-b-0 md:border-r border-border">
             <CodeEditorPanel label="Your Code (Buggy)" language="cpp" value={buggyCode} onChange={setBuggyCode} />
           </div>
-          <div className="h-full">
+          <div className="h-[280px] md:h-full">
             <CodeEditorPanel label="Correct Code (Reference)" language="cpp" value={correctCode} onChange={setCorrectCode} />
           </div>
         </div>
 
-        {/* Row 2: Config (left) + Run Single Test (right) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 min-h-[250px] md:h-[25vh] border-b border-border">
-          <div className="h-full border-b md:border-b-0 md:border-r border-border">
+        {/* Row 2: Config + Run Single Test */}
+        <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border">
+          <div className="border-b md:border-b-0 md:border-r border-border">
             <ConfigPanel
               additionalInfo={additionalInfo}
               onAdditionalInfoChange={setAdditionalInfo}
@@ -185,15 +185,13 @@ const Index = () => {
               progressStep={progressStep}
             />
           </div>
-          <div className="h-full">
+          <div>
             <RunSingleTestPanel onRunSingle={handleRunSingle} loading={singleTestLoading} />
           </div>
         </div>
 
-        {/* Row 3: Diagnosis full width */}
-        <div className="min-h-[250px] md:min-h-[30vh]">
-          <DiagnosisDisplay diagnosis={diagnosis} />
-        </div>
+        {/* Row 3: Diagnosis */}
+        <DiagnosisDisplay diagnosis={diagnosis} />
       </div>
     </div>
   );
