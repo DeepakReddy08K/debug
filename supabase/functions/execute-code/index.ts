@@ -1,7 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders, validateAuth, unauthorizedResponse } from "../_shared/auth.ts";
 
-const JUDGE0_URL = "https://ce.judge0.com";
+const JUDGE0_URL = "https://judge0-ce.p.rapidapi.com";
+const RAPIDAPI_KEY = Deno.env.get("JUDGE0_RAPIDAPI_KEY") || "";
 
 const LANGUAGE_MAP: Record<string, number> = {
   cpp: 54,
