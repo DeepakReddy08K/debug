@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import CollapsibleText from "@/components/CollapsibleText";
+import CopyButton from "@/components/CopyButton";
 import DiagnosisDisplay from "@/components/DiagnosisDisplay";
 import {
   ArrowLeft,
