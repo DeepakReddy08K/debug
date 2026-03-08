@@ -39,11 +39,17 @@ async function submitBatch(
     memory_limit: 256000,
   }));
 
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (RAPIDAPI_KEY) {
+    headers["X-RapidAPI-Key"] = RAPIDAPI_KEY;
+    headers["X-RapidAPI-Host"] = "judge0-ce.p.rapidapi.com";
+  }
+
   const res = await fetch(
     `${JUDGE0_URL}/submissions/batch?base64_encoded=true`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ submissions: encoded }),
     }
   );
