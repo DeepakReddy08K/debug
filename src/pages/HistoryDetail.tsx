@@ -200,9 +200,13 @@ export default function HistoryDetail() {
             </h2>
             <div className="rounded-lg border border-border bg-card p-4 space-y-3">
               <div>
-                <span className="text-[10px] font-mono text-muted-foreground uppercase">Input</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono text-muted-foreground uppercase">Input</span>
+                  <CopyButton text={run.failing_input} />
+                </div>
                 <div className="mt-1 p-3 rounded-md bg-muted/50 border border-border">
                   <CollapsibleText text={run.failing_input} className="text-xs font-mono" />
+                </div>
                 </div>
               </div>
               {(run.output_buggy || run.output_correct) && (
