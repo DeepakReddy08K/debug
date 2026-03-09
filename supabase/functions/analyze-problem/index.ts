@@ -110,6 +110,8 @@ serve(async (req) => {
           { role: "user", content: userPrompt },
         ],
         temperature: 0.3,
+        max_tokens: 8000,
+        response_format: { type: "json_object" },
       }),
     });
 
@@ -154,43 +156,103 @@ serve(async (req) => {
 
       // Find JSON boundaries
       const jsonStart = cleaned.search(/[\{\[]/);
-      const jsonEnd = cleaned[jsonStart] === '['
-        ? cleaned.lastIndexOf(']')
-        : cleaned.lastIndexOf('}');
-
-      if (jsonStart === -1 || jsonEnd === -1) {
+      if (jsonStart === -1) {
         throw new Error("No JSON object found in response");
       }
 
-      cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
+      const isArray = cleaned[jsonStart] === '[';
+      const jsonEnd = isArray ? cleaned.lastIndexOf(']') : cleaned.lastIndexOf('}');
 
-      // Remove code-like expressions (e.g., (1 << 30), 2**30, etc.)
+      if (jsonEnd === -1 || jsonEnd <= jsonStart) {
+        // Truncated response - try to repair
+        cleaned = cleaned.substring(jsonStart);
+      } else {
+        cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
+      }
+
+      // Remove code-like expressions
       cleaned = cleaned
-        .replace(/\(\s*\d+\s*<<\s*\d+\s*\)\s*\+?\s*\d*/g, "0") // (1 << 30) + 1 -> 0
-        .replace(/\d+\s*\*\*\s*\d+/g, "0") // 2**30 -> 0
-        .replace(/,\s*}/g, "}") // trailing commas in objects
-        .replace(/,\s*]/g, "]") // trailing commas in arrays
-        .replace(/[\x00-\x1F\x7F]/g, ""); // control characters
+        .replace(/\(\s*\d+\s*<<\s*\d+\s*\)\s*\+?\s*\d*/g, "0")
+        .replace(/\d+\s*\*\*\s*\d+/g, "0")
+        .replace(/,\s*}/g, "}")
+        .replace(/,\s*]/g, "]")
+        .replace(/[\x00-\x1F\x7F]/g, "");
 
+      // First attempt
       try {
         return JSON.parse(cleaned);
-      } catch (e) {
-        // If still failing, try to recover truncated JSON
-        if (cleaned.startsWith('{') && !cleaned.endsWith('}')) {
-          // Find last complete property
-          const lastQuote = cleaned.lastIndexOf('"');
-          const lastBrace = cleaned.lastIndexOf('}');
-          const lastBracket = cleaned.lastIndexOf(']');
-          const cutPoint = Math.max(lastBrace, lastBracket);
-          if (cutPoint > 0) {
-            const repairedObj = cleaned.substring(0, cutPoint + 1) + "}".repeat(5);
-            try {
-              return JSON.parse(repairedObj);
-            } catch {
-              // Last resort - try to balance braces
-            }
+      } catch (_e) {
+        // ignore, try repair
+      }
+
+      // Repair truncated JSON by balancing braces/brackets
+      function balanceAndParse(str: string): unknown {
+        // Find the last cleanly closed brace or bracket
+        let openBraces = 0, openBrackets = 0;
+        let lastGoodPos = -1;
+        let inString = false;
+        let escape = false;
+
+        for (let i = 0; i < str.length; i++) {
+          const ch = str[i];
+          if (escape) { escape = false; continue; }
+          if (ch === '\\' && inString) { escape = true; continue; }
+          if (ch === '"') { inString = !inString; continue; }
+          if (inString) continue;
+
+          if (ch === '{') openBraces++;
+          else if (ch === '}') { openBraces--; if (openBraces >= 0) lastGoodPos = i; }
+          else if (ch === '[') openBrackets++;
+          else if (ch === ']') { openBrackets--; if (openBrackets >= 0) lastGoodPos = i; }
+        }
+
+        // Try from lastGoodPos, appending missing closers
+        if (lastGoodPos > 0) {
+          let attempt = str.substring(0, lastGoodPos + 1);
+          // Remove trailing comma
+          attempt = attempt.replace(/,\s*$/, "");
+          // Count remaining open braces/brackets
+          let ob = 0, obrk = 0;
+          inString = false; escape = false;
+          for (let i = 0; i < attempt.length; i++) {
+            const ch = attempt[i];
+            if (escape) { escape = false; continue; }
+            if (ch === '\\' && inString) { escape = true; continue; }
+            if (ch === '"') { inString = !inString; continue; }
+            if (inString) continue;
+            if (ch === '{') ob++;
+            else if (ch === '}') ob--;
+            else if (ch === '[') obrk++;
+            else if (ch === ']') obrk--;
+          }
+          // Close remaining
+          attempt += "]".repeat(Math.max(0, obrk)) + "}".repeat(Math.max(0, ob));
+          try {
+            return JSON.parse(attempt);
+          } catch {
+            // fall through
           }
         }
+
+        // Brute force: keep adding closers
+        let brute = str.replace(/,\s*$/, "");
+        for (let closers = 0; closers < 10; closers++) {
+          for (let combo = 0; combo < (1 << closers); combo++) {
+            // skip, just try simple approach
+          }
+          brute += "}";
+          try { return JSON.parse(brute); } catch { /* continue */ }
+          // try bracket instead
+          const bruteBracket = str.replace(/,\s*$/, "") + "]".repeat(closers + 1);
+          try { return JSON.parse(bruteBracket); } catch { /* continue */ }
+        }
+
+        throw new Error("Cannot repair truncated JSON");
+      }
+
+      try {
+        return balanceAndParse(cleaned);
+      } catch (e) {
         throw new Error(`Cannot parse JSON: ${e}`);
       }
     }
