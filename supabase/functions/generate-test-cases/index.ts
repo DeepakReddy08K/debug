@@ -168,15 +168,17 @@ serve(async (req) => {
   }
 
   try {
-    const { schema, runId } = await req.json();
+    const { schema, runId, retryRound = 0 } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
+    const SYSTEM_PROMPT = getSystemPrompt(retryRound);
     const trimmedSchema = trimSchema(schema);
-    const userPrompt = `Generate test cases for this problem:\n\n${JSON.stringify(trimmedSchema, null, 2)}\n\nGenerate 8-10 diverse test cases. Each input must be a literal string. Keep N ≤ 200.`;
+    const roundLabel = retryRound > 0 ? ` (retry round ${retryRound} — generate DIFFERENT and HARDER tests than before, focus on overflow/edge cases)` : "";
+    const userPrompt = `Generate test cases for this problem${roundLabel}:\n\n${JSON.stringify(trimmedSchema, null, 2)}\n\nGenerate 8-10 diverse test cases. Each input must be a literal string. Keep N ≤ 200.${retryRound > 0 ? " Previous basic tests found no bug — try harder edge cases, overflow scenarios, and adversarial inputs." : ""}`;
 
     // 50-second timeout to stay within edge function limits
     const controller = new AbortController();

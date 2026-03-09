@@ -159,8 +159,8 @@ const Index = () => {
         retryRound < MAX_RETRY_ROUNDS
       ) {
         retryRound++;
-        setProgressStep(`Step 4/5: No bug found yet — generating extra test batch ${retryRound}/${MAX_RETRY_ROUNDS}...`);
-        const { data: extraTestData, error: extraTestError } = await supabase.functions.invoke("generate-test-cases", { body: { schema, runId } });
+        setProgressStep(`Step 4/5: No bug found yet — generating harder test batch ${retryRound}/${MAX_RETRY_ROUNDS}...`);
+        const { data: extraTestData, error: extraTestError } = await supabase.functions.invoke("generate-test-cases", { body: { schema, runId, retryRound } });
         if (extraTestError || extraTestData?.error || !extraTestData?.result?.test_cases?.length) break;
 
         const extraCount = extraTestData.result.test_cases.length;
