@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.debug-chat]
 verify_jwt = false
+
+[functions.wrap-class-code]
+verify_jwt = false
