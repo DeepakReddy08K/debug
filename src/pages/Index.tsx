@@ -72,6 +72,26 @@ const Index = () => {
 
       const schema = analysisData.schema;
       const detectedLanguage = schema?.problem_meta?.language || "cpp";
+      const isClassBased = schema?.problem_meta?.is_class_based === true;
+
+      // If class-based (LeetCode style), wrap the code with main() + input parsing
+      let execBuggy = cleanBuggy;
+      let execCorrect = cleanCorrect;
+
+      if (isClassBased) {
+        setProgressStep("Step 1.5/5: Wrapping class-based code for execution...");
+        toast.info("Class-based code detected — generating executable wrappers...");
+        const { data: wrapData, error: wrapError } = await supabase.functions.invoke("wrap-class-code", {
+          body: { buggyCode: cleanBuggy, correctCode: cleanCorrect, schema, language: detectedLanguage },
+        });
+        if (wrapError) throw new Error(wrapError.message || "Code wrapping failed");
+        if (wrapData?.error) throw new Error(wrapData.error);
+        if (!wrapData?.wrappedBuggyCode || !wrapData?.wrappedCorrectCode) {
+          throw new Error("Failed to generate executable wrappers for class-based code");
+        }
+        execBuggy = wrapData.wrappedBuggyCode;
+        execCorrect = wrapData.wrappedCorrectCode;
+      }
 
       const { data: runData, error: insertError } = await supabase.from("runs").insert({
         user_id: user!.id, buggy_code: cleanBuggy, correct_code: cleanCorrect, language: detectedLanguage,
@@ -82,7 +102,7 @@ const Index = () => {
       if (runId) setCurrentRunId(runId);
 
       setProgressStep("Step 2/5: Checking for syntax & runtime errors...");
-      const { data: syntaxData, error: syntaxError } = await supabase.functions.invoke("check-syntax", { body: { buggyCode: cleanBuggy, correctCode: cleanCorrect, language: detectedLanguage } });
+      const { data: syntaxData, error: syntaxError } = await supabase.functions.invoke("check-syntax", { body: { buggyCode: execBuggy, correctCode: execCorrect, language: detectedLanguage } });
       if (syntaxError) throw new Error(syntaxError.message || "Syntax check failed");
       if (syntaxData?.error) throw new Error(syntaxData.error);
       const syntaxResult = syntaxData?.result;
@@ -125,7 +145,8 @@ const Index = () => {
         if (dbTestCases && dbTestCases.length > 0) storedTestCases = dbTestCases.map((tc) => ({ id: tc.id, input: tc.input_data }));
       }
 
-      let { data: execData, error: execError } = await supabase.functions.invoke("execute-code", { body: { buggyCode: cleanBuggy, correctCode: cleanCorrect, language: detectedLanguage, testCases: storedTestCases, runId } });
+      // Use wrapped code for execution (same as original for non-class-based)
+      let { data: execData, error: execError } = await supabase.functions.invoke("execute-code", { body: { buggyCode: execBuggy, correctCode: execCorrect, language: detectedLanguage, testCases: storedTestCases, runId } });
       if (execError) throw new Error(execError.message || "Code execution failed");
       if (execData?.error) throw new Error(execData.error);
 
@@ -150,7 +171,7 @@ const Index = () => {
         }
 
         setProgressStep(`Step 4/5: Running extra batch ${retryRound}/${MAX_RETRY_ROUNDS} (${extraCount} tests)...`);
-        const { data: extraExecData, error: extraExecError } = await supabase.functions.invoke("execute-code", { body: { buggyCode: cleanBuggy, correctCode: cleanCorrect, language: detectedLanguage, testCases: extraTestCases, runId } });
+        const { data: extraExecData, error: extraExecError } = await supabase.functions.invoke("execute-code", { body: { buggyCode: execBuggy, correctCode: execCorrect, language: detectedLanguage, testCases: extraTestCases, runId } });
         if (extraExecError || extraExecData?.error) break;
 
         // If this batch found failures, use its results

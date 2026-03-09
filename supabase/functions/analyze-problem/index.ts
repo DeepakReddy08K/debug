@@ -16,7 +16,8 @@ The JSON must follow this exact structure:
     "name": "string",
     "source": "string (e.g. Codeforces, LeetCode, Unknown)",
     "problem_type": "string (e.g. greedy, dp, sorting, graph)",
-    "language": "string — the PROGRAMMING LANGUAGE of the code. MUST be one of: cpp, c, python, java, javascript. Detect from syntax: #include → cpp, import java → java, def/print() → python, etc. Default to cpp if ambiguous."
+    "language": "string — the PROGRAMMING LANGUAGE of the code. MUST be one of: cpp, c, python, java, javascript. Detect from syntax: #include → cpp, import java → java, def/print() → python, etc. Default to cpp if ambiguous.",
+    "is_class_based": "boolean — true if the code uses a class-based solution style (like LeetCode: a class with a method that solves the problem, e.g. 'class Solution { public: int solve(...) { ... } }' or 'class Solution: def solve(self, ...)'). false if it reads from stdin/cout and has a main() or equivalent entry point."
   },
   "input_structure": {
     "format": "single_test_case | multi_test_case",
