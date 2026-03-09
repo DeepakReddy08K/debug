@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders, validateAuth, unauthorizedResponse } from "../_shared/auth.ts";
+import { callAIWithFailover } from "../_shared/ai-failover.ts";
 
 const SYSTEM_PROMPT = `You are an expert competitive programmer. Your ONLY job is to generate a main() function that:
 1. Reads input from stdin according to the given schema
@@ -44,21 +45,15 @@ serve(async (req) => {
   try {
     const { buggyCode, correctCode, schema, language } = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
-
     const schemaSummary = {
       input_structure: schema?.input_structure,
       output_structure: schema?.output_structure,
       problem_meta: schema?.problem_meta,
     };
 
-    // Detect the method name and signature from the class code
     const detectMethod = (code: string): string => {
-      // Find public methods that aren't constructors or helpers
       const methodMatches = code.match(/(?:public:\s*[\s\S]*?)(\w[\w\s\*<>,]*?)\s+(\w+)\s*\(([^)]*)\)/g);
       if (methodMatches) {
-        // Return the last public method (usually the main solving method)
         return methodMatches[methodMatches.length - 1];
       }
       return "";
@@ -66,7 +61,6 @@ serve(async (req) => {
 
     const methodHint = detectMethod(buggyCode) || detectMethod(correctCode) || "";
 
-    // Generate ONLY the main() function once, shared by both codes
     const userPrompt = `Language: ${language}
 
 Problem Schema:
@@ -80,27 +74,15 @@ Do NOT include the class code or #include statements.
 The main() must read stdin per the schema, call the Solution method, and print the result.
 Output ONLY raw code.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.1,
-        max_tokens: 2000,
-      }),
+    const response = await callAIWithFailover({
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+      model: "google/gemini-2.5-flash",
+      temperature: 0.1,
+      max_tokens: 2000,
     });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`AI error: ${response.status} - ${errText}`);
-    }
 
     const data = await response.json();
     let mainCode = data.choices?.[0]?.message?.content;
@@ -121,7 +103,7 @@ Output ONLY raw code.`;
     mainCode = mainCode.replace(/^using namespace\s+.*$/gm, "");
     mainCode = mainCode.trim();
 
-    // Assemble complete programs: includes + ORIGINAL class (untouched) + shared main()
+    // Assemble complete programs
     let wrappedBuggy: string;
     let wrappedCorrect: string;
 
@@ -130,7 +112,6 @@ Output ONLY raw code.`;
       wrappedBuggy = header + buggyCode.trim() + "\n\n" + mainCode;
       wrappedCorrect = header + correctCode.trim() + "\n\n" + mainCode;
     } else if (language === "java") {
-      // For Java, wrap in a Main class
       wrappedBuggy = buggyCode.trim() + "\n\npublic class Main {\n" + mainCode + "\n}";
       wrappedCorrect = correctCode.trim() + "\n\npublic class Main {\n" + mainCode + "\n}";
     } else if (language === "python") {

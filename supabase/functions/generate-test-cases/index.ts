@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders, validateAuth, unauthorizedResponse } from "../_shared/auth.ts";
+import { callAIWithFailover } from "../_shared/ai-failover.ts";
 
 function getSystemPrompt(retryRound: number): string {
   const base = `You are an expert competitive programming stress tester. Your job is NOT to generate random test cases — your job is to BREAK code and expose bugs.
@@ -123,15 +124,12 @@ function extractJsonFromResponse(response: string): any {
     .replace(/```\s*/g, "")
     .trim();
 
-  // First try direct parse
   try {
     return JSON.parse(cleaned);
   } catch {
     // continue to repair
   }
 
-  // Extract complete test case objects using a greedy approach
-  // Find the test_cases array and extract all complete {...} objects
   const testCasesMatch = cleaned.match(/"test_cases"\s*:\s*\[/);
   if (testCasesMatch && testCasesMatch.index !== undefined) {
     const arrayStart = testCasesMatch.index + testCasesMatch[0].length;
@@ -149,7 +147,7 @@ function extractJsonFromResponse(response: string): any {
         if (depth === 0 && objStart !== -1) {
           const obj = cleaned.substring(objStart, i + 1);
           try {
-            JSON.parse(obj); // validate it's complete
+            JSON.parse(obj);
             completeObjects.push(obj);
           } catch {
             // incomplete object, skip
@@ -165,7 +163,6 @@ function extractJsonFromResponse(response: string): any {
     }
   }
 
-  // Fallback: find JSON boundaries and try bracket repair
   const jsonStart = cleaned.search(/[\{\[]/);
   const jsonEnd = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
   if (jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON found in response");
@@ -190,7 +187,6 @@ function extractJsonFromResponse(response: string): any {
   return JSON.parse(cleaned);
 }
 
-// Trim schema to reduce prompt size — keep only essential info
 function trimSchema(schema: any): any {
   const trimmed: any = {};
   if (schema.problem_meta) {
@@ -202,7 +198,6 @@ function trimSchema(schema: any): any {
   if (schema.output_structure) {
     trimmed.output_structure = schema.output_structure;
   }
-  // Include hint but skip verbose categories/examples
   if (schema.ai_generation_prompt_hint) {
     trimmed.hint = schema.ai_generation_prompt_hint;
   }
@@ -214,7 +209,6 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Validate authentication
   const auth = await validateAuth(req);
   if (!auth) {
     return unauthorizedResponse();
@@ -223,62 +217,20 @@ serve(async (req) => {
   try {
     const { schema, runId, retryRound = 0 } = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
-
     const SYSTEM_PROMPT = getSystemPrompt(retryRound);
     const trimmedSchema = trimSchema(schema);
     const roundLabel = retryRound > 0 ? ` (retry round ${retryRound} — generate DIFFERENT and HARDER tests than before, focus on overflow/edge cases)` : "";
     const userPrompt = `Generate test cases for this problem${roundLabel}:\n\n${JSON.stringify(trimmedSchema, null, 2)}\n\nGenerate 8-10 diverse test cases. Each input must be a literal string. Keep N ≤ 200.${retryRound > 0 ? " Previous basic tests found no bug — try harder edge cases, overflow scenarios, and adversarial inputs." : ""}`;
 
-    // 50-second timeout to stay within edge function limits
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 50000);
-
-    let response;
-    try {
-      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: userPrompt },
-          ],
-          temperature: retryRound === 0 ? 0.4 : 0.7 + (retryRound * 0.1),
-          max_tokens: 4000,
-        }),
-        signal: controller.signal,
-      });
-    } catch (fetchErr) {
-      clearTimeout(timeout);
-      if (fetchErr instanceof DOMException && fetchErr.name === "AbortError") {
-        return new Response(JSON.stringify({ error: "AI took too long. Please try again." }), {
-          status: 504, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      throw fetchErr;
-    }
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      return new Response(JSON.stringify({ error: "AI service error" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const response = await callAIWithFailover({
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+      model: "google/gemini-2.5-flash",
+      temperature: retryRound === 0 ? 0.4 : 0.7 + (retryRound * 0.1),
+      max_tokens: 4000,
+    });
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
@@ -299,7 +251,6 @@ serve(async (req) => {
       });
     }
 
-    // Filter out test cases with code expressions
     if (parsed.test_cases) {
       parsed.test_cases = parsed.test_cases.filter((tc: { input: string }) => {
         if (typeof tc.input !== "string") return false;
@@ -316,7 +267,6 @@ serve(async (req) => {
       });
     }
 
-    // Store test cases in database using authenticated client
     if (runId && parsed.test_cases.length > 0) {
       const testCaseRows = parsed.test_cases.map((tc: { input: string }) => ({
         run_id: runId,

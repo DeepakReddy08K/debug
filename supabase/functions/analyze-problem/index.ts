@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders, validateAuth, unauthorizedResponse } from "../_shared/auth.ts";
+import { callAIWithFailover } from "../_shared/ai-failover.ts";
 
 const SYSTEM_PROMPT = `You are an expert competitive programming analyst. Your task is to analyze provided code and/or problem description and produce a comprehensive JSON schema that describes:
 
@@ -68,7 +69,6 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Validate authentication
   const auth = await validateAuth(req);
   if (!auth) {
     return unauthorizedResponse();
@@ -77,14 +77,7 @@ serve(async (req) => {
   try {
     const { buggyCode, correctCode, additionalInfo } = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
-
-    // Build the user prompt
     let userPrompt = "Analyze the following and produce the JSON schema:\n\n";
-
     if (buggyCode?.trim()) {
       userPrompt += `## Buggy Code:\n\`\`\`\n${buggyCode}\n\`\`\`\n\n`;
     }
@@ -94,47 +87,18 @@ serve(async (req) => {
     if (additionalInfo?.trim()) {
       userPrompt += `## Additional Info (Problem Statement / Constraints):\n${additionalInfo}\n\n`;
     }
-
     userPrompt += "Produce the comprehensive JSON schema now.";
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.3,
-        max_tokens: 8000,
-        response_format: { type: "json_object" },
-      }),
+    const response = await callAIWithFailover({
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+      model: "google/gemini-2.5-flash",
+      temperature: 0.3,
+      max_tokens: 8000,
+      response_format: { type: "json_object" },
     });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "AI usage limit reached. Please add credits to continue." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      return new Response(JSON.stringify({ error: "AI service error" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
@@ -148,13 +112,11 @@ serve(async (req) => {
 
     // Robust JSON extraction and repair
     function extractAndRepairJson(response: string): unknown {
-      // Remove markdown code blocks
       let cleaned = response
         .replace(/```json\s*/gi, "")
         .replace(/```\s*/g, "")
         .trim();
 
-      // Find JSON boundaries
       const jsonStart = cleaned.search(/[\{\[]/);
       if (jsonStart === -1) {
         throw new Error("No JSON object found in response");
@@ -164,13 +126,11 @@ serve(async (req) => {
       const jsonEnd = isArray ? cleaned.lastIndexOf(']') : cleaned.lastIndexOf('}');
 
       if (jsonEnd === -1 || jsonEnd <= jsonStart) {
-        // Truncated response - try to repair
         cleaned = cleaned.substring(jsonStart);
       } else {
         cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
       }
 
-      // Remove code-like expressions
       cleaned = cleaned
         .replace(/\(\s*\d+\s*<<\s*\d+\s*\)\s*\+?\s*\d*/g, "0")
         .replace(/\d+\s*\*\*\s*\d+/g, "0")
@@ -178,16 +138,13 @@ serve(async (req) => {
         .replace(/,\s*]/g, "]")
         .replace(/[\x00-\x1F\x7F]/g, "");
 
-      // First attempt
       try {
         return JSON.parse(cleaned);
       } catch (_e) {
         // ignore, try repair
       }
 
-      // Repair truncated JSON by balancing braces/brackets
       function balanceAndParse(str: string): unknown {
-        // Find the last cleanly closed brace or bracket
         let openBraces = 0, openBrackets = 0;
         let lastGoodPos = -1;
         let inString = false;
@@ -206,12 +163,9 @@ serve(async (req) => {
           else if (ch === ']') { openBrackets--; if (openBrackets >= 0) lastGoodPos = i; }
         }
 
-        // Try from lastGoodPos, appending missing closers
         if (lastGoodPos > 0) {
           let attempt = str.substring(0, lastGoodPos + 1);
-          // Remove trailing comma
           attempt = attempt.replace(/,\s*$/, "");
-          // Count remaining open braces/brackets
           let ob = 0, obrk = 0;
           inString = false; escape = false;
           for (let i = 0; i < attempt.length; i++) {
@@ -225,7 +179,6 @@ serve(async (req) => {
             else if (ch === '[') obrk++;
             else if (ch === ']') obrk--;
           }
-          // Close remaining
           attempt += "]".repeat(Math.max(0, obrk)) + "}".repeat(Math.max(0, ob));
           try {
             return JSON.parse(attempt);
@@ -234,15 +187,10 @@ serve(async (req) => {
           }
         }
 
-        // Brute force: keep adding closers
         let brute = str.replace(/,\s*$/, "");
         for (let closers = 0; closers < 10; closers++) {
-          for (let combo = 0; combo < (1 << closers); combo++) {
-            // skip, just try simple approach
-          }
           brute += "}";
           try { return JSON.parse(brute); } catch { /* continue */ }
-          // try bracket instead
           const bruteBracket = str.replace(/,\s*$/, "") + "]".repeat(closers + 1);
           try { return JSON.parse(bruteBracket); } catch { /* continue */ }
         }

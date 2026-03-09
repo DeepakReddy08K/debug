@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders, validateAuth, unauthorizedResponse } from "../_shared/auth.ts";
+import { callAIWithFailover } from "../_shared/ai-failover.ts";
 
 const SYSTEM_PROMPT = `You are a sharp, no-nonsense competitive programming debugger. You analyze code bugs and give DIRECT, CONCISE answers. No fluff.
 
@@ -66,7 +67,6 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Validate authentication
   const auth = await validateAuth(req);
   if (!auth) {
     return unauthorizedResponse();
@@ -79,27 +79,19 @@ serve(async (req) => {
       language,
       syntaxErrors,
       executionResults,
-      compilationError,  // new field for compilation errors
+      compilationError,
       runId,
     } = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
-
-    // Build context based on which branch triggered this
     let userPrompt = `Language: ${language || "cpp"}\n\n`;
     userPrompt += `## Buggy Code:\n\`\`\`\n${buggyCode}\n\`\`\`\n\n`;
     userPrompt += `## Correct Code:\n\`\`\`\n${correctCode}\n\`\`\`\n\n`;
 
     if (syntaxErrors?.has_errors) {
-      // Scenario A: syntax/runtime errors from Branch 2a
       userPrompt += `## Scenario: SYNTAX/RUNTIME ERRORS DETECTED\n`;
       userPrompt += `Errors found by static analysis:\n${JSON.stringify(syntaxErrors.errors, null, 2)}\n\n`;
       userPrompt += `Analyze these errors and provide fixes.`;
     } else if (compilationError) {
-      // Scenario B: compilation error from Judge0
       userPrompt += `## Scenario: COMPILATION ERROR\n`;
       userPrompt += `The code failed to compile when executed by the judge.\n`;
       userPrompt += `**Compiler Output:**\n\`\`\`\n${compilationError}\n\`\`\`\n\n`;
@@ -111,7 +103,6 @@ serve(async (req) => {
       }
       userPrompt += `\nAnalyze the compilation error. Identify the exact issue and provide a specific fix.`;
     } else if (executionResults?.summary?.failing > 0) {
-      // Scenario C: failing test cases from Judge0
       const firstFail = executionResults.summary.first_failing;
       userPrompt += `## Scenario: FAILING TEST CASE FOUND\n`;
       userPrompt += `Total: ${executionResults.summary.total} tests, ${executionResults.summary.failing} failing\n\n`;
@@ -126,7 +117,6 @@ serve(async (req) => {
         userPrompt += `**Buggy Stderr:** ${firstFail.buggy_stderr}\n`;
       }
 
-      // Include up to 2 more failing cases for context
       const otherFailing = executionResults.results
         ?.filter((r: any) => r.is_failing)
         ?.slice(1, 3);
@@ -139,46 +129,20 @@ serve(async (req) => {
 
       userPrompt += `\nFind the exact logical bug causing the output mismatch. Be specific.`;
     } else {
-      // Scenario D: all passed — do a deep code diff
       userPrompt += `## Scenario: ALL TESTS PASSED\n`;
       userPrompt += `All ${executionResults?.summary?.total || 0} test cases produced identical output.\n\n`;
       userPrompt += `IMPORTANT: Do a careful LINE-BY-LINE comparison of the buggy code vs the correct code. List EVERY difference you find, no matter how small (e.g., "endl" vs "\\n", different variable names, different loop bounds, etc.). For each difference, explain whether it could cause issues on an online judge.\n\n`;
       userPrompt += `If the codes are logically identical, confirm that and suggest improvements.`;
     }
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.2,
-      }),
+    const response = await callAIWithFailover({
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+      model: "google/gemini-2.5-flash",
+      temperature: 0.2,
     });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "AI usage limit reached. Please add credits." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      return new Response(JSON.stringify({ error: "AI service error" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
@@ -204,27 +168,20 @@ serve(async (req) => {
       });
     }
 
-    // Validate required fields
     if (!parsed.scenario) {
       parsed.scenario = compilationError ? "compilation_error" 
         : syntaxErrors?.has_errors ? "syntax_error"
         : executionResults?.summary?.failing > 0 ? "logic_bug"
         : "all_correct";
     }
-    if (!parsed.verdict) {
-      parsed.verdict = "Analysis complete.";
-    }
+    if (!parsed.verdict) parsed.verdict = "Analysis complete.";
     if (!parsed.issues) parsed.issues = [];
     if (!parsed.improvements) parsed.improvements = [];
 
-    // Store diagnosis in DB using authenticated client
     if (runId) {
       await auth.supabase
         .from("runs")
-        .update({
-          ai_diagnosis: parsed,
-          status: "diagnosed",
-        })
+        .update({ ai_diagnosis: parsed, status: "diagnosed" })
         .eq("id", runId);
     }
 
