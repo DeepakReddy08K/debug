@@ -1,7 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders, validateAuth, unauthorizedResponse } from "../_shared/auth.ts";
 
-const SYSTEM_PROMPT = `You are a test case generator for competitive programming. Given a problem schema, generate 8-10 test cases.
+function getSystemPrompt(retryRound: number): string {
+  const base = `You are a test case generator for competitive programming. Given a problem schema, generate 8-10 test cases.
 
 RESPOND WITH ONLY VALID JSON. No markdown, no code fences, no explanation.
 
@@ -10,6 +11,7 @@ CRITICAL:
 - NEVER use Python/code expressions (no map, join, range, lambda, list comprehensions).
 - Keep N ≤ 200 for all test cases. Write out ALL numbers literally.
 - Keep total response SHORT (under 3000 tokens).
+- IMPORTANT: Generate DIFFERENT test cases each time. Use randomized values. Do NOT repeat common patterns.
 
 JSON format:
 {
@@ -18,7 +20,10 @@ JSON format:
   ],
   "total_count": number,
   "generation_notes": "string"
-}
+}`;
+
+  if (retryRound === 0) {
+    return base + `
 
 Coverage (8-10 tests total):
 - 2-3 small/trivial (N=1 to 5)
@@ -27,6 +32,37 @@ Coverage (8-10 tests total):
 - 1 moderate stress (N=100 to 200, all numbers written out)
 
 For multi_test_case format, include "t" line. Respect all constraints. No constraint violations.`;
+  } else if (retryRound === 1) {
+    return base + `
+
+This is RETRY ROUND 1 — previous basic tests found NO bug. Generate HARDER, more targeted tests:
+- Focus on INTEGER OVERFLOW cases: values near INT_MAX (2147483647), INT_MIN (-2147483648), large sums that overflow 32-bit
+- Focus on BOUNDARY values: N at max constraint, values at min/max of allowed range
+- Include TRICKY edge cases: all elements equal, alternating min/max values, single element arrays
+- Include cases with NEGATIVE numbers if constraints allow
+- 2-3 overflow-targeted tests (large numbers near 10^9 or 10^18)
+- 2-3 boundary tests (max N with extreme values)
+- 2-3 adversarial patterns (sorted, reverse sorted, zigzag, all same)
+- 1 stress test near max constraints
+
+For multi_test_case format, include "t" line. Respect all constraints. No constraint violations.`;
+  } else {
+    return base + `
+
+This is RETRY ROUND ${retryRound} — previous tests still found NO bug. Generate MAXIMUM ADVERSARIAL tests:
+- INTEGER OVERFLOW is the #1 focus: products/sums of large numbers, values like 999999999, 1000000000, 2147483647
+- PRECISION edge cases: values that are off-by-one from boundaries
+- DEGENERATE inputs: empty-like (N=1), all zeros, all maximum values, all minimum values
+- WORST-CASE patterns for common algorithms: reverse sorted for bubble sort, already sorted for certain partitions
+- SPECIAL SEQUENCES: fibonacci-like growth, powers of 2, prime numbers near limits
+- Mix of positive and negative extremes
+- 3-4 overflow/large-number tests
+- 2-3 degenerate/corner cases
+- 2-3 adversarial algorithm-specific patterns
+
+For multi_test_case format, include "t" line. Respect all constraints. No constraint violations.`;
+  }
+}
 
 function extractJsonFromResponse(response: string): any {
   let cleaned = response
