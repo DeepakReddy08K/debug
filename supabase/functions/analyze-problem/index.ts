@@ -143,18 +143,63 @@ serve(async (req) => {
       });
     }
 
-    // Try to parse the JSON from the response (strip markdown fences if any)
-    let jsonContent = content.trim();
-    if (jsonContent.startsWith("```")) {
-      jsonContent = jsonContent.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
+    // Robust JSON extraction and repair
+    function extractAndRepairJson(response: string): unknown {
+      // Remove markdown code blocks
+      let cleaned = response
+        .replace(/```json\s*/gi, "")
+        .replace(/```\s*/g, "")
+        .trim();
+
+      // Find JSON boundaries
+      const jsonStart = cleaned.search(/[\{\[]/);
+      const jsonEnd = cleaned[jsonStart] === '['
+        ? cleaned.lastIndexOf(']')
+        : cleaned.lastIndexOf('}');
+
+      if (jsonStart === -1 || jsonEnd === -1) {
+        throw new Error("No JSON object found in response");
+      }
+
+      cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
+
+      // Remove code-like expressions (e.g., (1 << 30), 2**30, etc.)
+      cleaned = cleaned
+        .replace(/\(\s*\d+\s*<<\s*\d+\s*\)\s*\+?\s*\d*/g, "0") // (1 << 30) + 1 -> 0
+        .replace(/\d+\s*\*\*\s*\d+/g, "0") // 2**30 -> 0
+        .replace(/,\s*}/g, "}") // trailing commas in objects
+        .replace(/,\s*]/g, "]") // trailing commas in arrays
+        .replace(/[\x00-\x1F\x7F]/g, ""); // control characters
+
+      try {
+        return JSON.parse(cleaned);
+      } catch (e) {
+        // If still failing, try to recover truncated JSON
+        if (cleaned.startsWith('{') && !cleaned.endsWith('}')) {
+          // Find last complete property
+          const lastQuote = cleaned.lastIndexOf('"');
+          const lastBrace = cleaned.lastIndexOf('}');
+          const lastBracket = cleaned.lastIndexOf(']');
+          const cutPoint = Math.max(lastBrace, lastBracket);
+          if (cutPoint > 0) {
+            const repairedObj = cleaned.substring(0, cutPoint + 1) + "}".repeat(5);
+            try {
+              return JSON.parse(repairedObj);
+            } catch {
+              // Last resort - try to balance braces
+            }
+          }
+        }
+        throw new Error(`Cannot parse JSON: ${e}`);
+      }
     }
 
     let parsed;
     try {
-      parsed = JSON.parse(jsonContent);
-    } catch {
-      // Return raw content if JSON parsing fails
-      return new Response(JSON.stringify({ error: "AI returned invalid JSON", raw: jsonContent }), {
+      parsed = extractAndRepairJson(content);
+    } catch (parseErr) {
+      console.error("JSON extraction failed:", parseErr);
+      return new Response(JSON.stringify({ error: "AI returned invalid JSON", raw: content.substring(0, 500) }), {
         status: 422,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
