@@ -110,6 +110,8 @@ serve(async (req) => {
           { role: "user", content: userPrompt },
         ],
         temperature: 0.3,
+        max_tokens: 8000,
+        response_format: { type: "json_object" },
       }),
     });
 
