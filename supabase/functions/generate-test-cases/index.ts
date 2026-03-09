@@ -2,21 +2,69 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders, validateAuth, unauthorizedResponse } from "../_shared/auth.ts";
 
 function getSystemPrompt(retryRound: number): string {
-  const base = `You are a test case generator for competitive programming. Given a problem schema, generate 8-10 test cases.
+  const base = `You are an expert competitive programming stress tester. Your job is NOT to generate random test cases — your job is to BREAK code and expose bugs.
+
+Generate test cases specifically designed to expose common competitive programming bugs: integer overflow, off-by-one errors, boundary condition mishandling, incorrect duplicate handling, and edge cases.
 
 RESPOND WITH ONLY VALID JSON. No markdown, no code fences, no explanation.
 
-CRITICAL:
+CRITICAL REQUIREMENTS:
 - Every "input" value must be a LITERAL string with \\n for newlines.
 - NEVER use Python/code expressions (no map, join, range, lambda, list comprehensions).
 - Keep N ≤ 200 for all test cases. Write out ALL numbers literally.
-- Keep total response SHORT (under 3000 tokens).
-- IMPORTANT: Generate DIFFERENT test cases each time. Use randomized values. Do NOT repeat common patterns.
+- Generate DIFFERENT test cases each time. Do NOT repeat structures from previous batches.
+- Include test cases from EVERY applicable category below in each batch.
 
-JSON format:
+## CATEGORY 1 — Boundary & Edge Cases
+- n=1 (single element), n=2 (minimum multi-element), n=max constraint
+- All elements identical (all 1s, all 10^9), identical except one outlier
+- Already sorted, reverse sorted, alternating min-max pattern
+
+## CATEGORY 2 — Overflow Traps
+- All elements at 10^9 (max), sum overflow (n=10^5 with 10^9 values)
+- Product overflow cases (elements ~10^4 multiplied)
+- Differences at extreme ends, answer exceeding 2^31-1
+
+## CATEGORY 3 — Off-by-One Traps
+- Index 0 and n-1 access, subarrays of length 1 and n
+- Loop boundary tests (n times vs n-1), answer at first/last position
+- k=1, k=n when k is a parameter
+
+## CATEGORY 4 — Duplicate & Repeated Values
+- All duplicates (should output -1 or 0), two distinct values only
+- One unique element with rest duplicates, sorted with duplicates at boundaries
+- Duplicates affecting MEX, second largest, or partition logic
+
+## CATEGORY 5 — Mathematical Traps
+- Prime vs composite numbers, powers of 2 (1,2,4,...,2^30)
+- Values just below powers of 2 (e.g., 2^31-1), GCD/LCM sensitive cases
+- Multiples of MOD (10^9+7), zero and negative handling
+
+## CATEGORY 6 — String-Specific (if applicable)
+- All same characters ("aaaa"), single character, maximum length string
+- Alternating characters ("abab"), boundary alphabets ('a','z')
+- Palindromes, strings with all 26 distinct characters
+
+## CATEGORY 7 — Multi Test Case (if format is multi_test_case)
+- t=maximum allowed (e.g., 10^4), mix of n=1 and n=max in same batch
+- Accumulated state bugs, sum of n at global limit, first test very large then tiny
+
+## CATEGORY 8 — Graph/Tree (if applicable)
+- Linear chain, star graph, all disconnected, complete graph
+- Single node, single edge only
+
+GENERATION RULES:
+1. Include at least ONE test case from EACH applicable category per batch
+2. Include at least 3 overflow-prone cases per batch
+3. Always include the absolute maximum constraint case
+4. Vary batches — do NOT repeat same structure twice
+5. Generate inputs in EXACT format the code expects
+6. Focus on inputs where buggy and correct code are MOST LIKELY to diverge
+
+JSON format (REQUIRED):
 {
   "test_cases": [
-    { "category": "string", "description": "string", "input": "literal string with \\n" }
+    { "category": "string (e.g. Boundary, Overflow, Off-by-One)", "description": "string describing which bug it targets", "input": "literal string with \\n" }
   ],
   "total_count": number,
   "generation_notes": "string"
@@ -25,42 +73,47 @@ JSON format:
   if (retryRound === 0) {
     return base + `
 
-Coverage (8-10 tests total):
-- 2-3 small/trivial (N=1 to 5)
-- 2-3 edge cases (boundary values, sorted, reverse)
-- 2-3 medium random (N=20 to 100)
-- 1 moderate stress (N=100 to 200, all numbers written out)
+## RETRY ROUND 0 — Standard Adversarial Coverage
+Generate 8-10 test cases covering all 8 categories:
+- 1-2 boundary cases (n=1, n=2, n=max)
+- 2-3 overflow-targeted cases (10^9 values, sum overflow, product overflow)
+- 1-2 off-by-one cases (index edges, subarray boundaries)
+- 1 duplicate/repeated value case
+- 1 mathematical trap (primes, powers of 2, GCD/LCM)
+- 1 string case (if strings are input)
+- 1 multi-test-case trap (if applicable)
+- 1 graph/tree case (if applicable)
 
-For multi_test_case format, include "t" line. Respect all constraints. No constraint violations.`;
+Each test case should target a specific subtle bug. MUST respect constraints. NO constraint violations.`;
   } else if (retryRound === 1) {
     return base + `
 
-This is RETRY ROUND 1 — previous basic tests found NO bug. Generate HARDER, more targeted tests:
-- Focus on INTEGER OVERFLOW cases: values near INT_MAX (2147483647), INT_MIN (-2147483648), large sums that overflow 32-bit
-- Focus on BOUNDARY values: N at max constraint, values at min/max of allowed range
-- Include TRICKY edge cases: all elements equal, alternating min/max values, single element arrays
-- Include cases with NEGATIVE numbers if constraints allow
-- 2-3 overflow-targeted tests (large numbers near 10^9 or 10^18)
-- 2-3 boundary tests (max N with extreme values)
-- 2-3 adversarial patterns (sorted, reverse sorted, zigzag, all same)
-- 1 stress test near max constraints
+## RETRY ROUND 1 — Aggressive Overflow Focus (Previous tests found NO bug)
+Generate 10-12 adversarial test cases HEAVILY FOCUSED on integer overflow:
+- 3-4 pure overflow cases: all a[i]=10^9, n=10^5; large sums; products of large numbers; answer exceeding 2^31-1
+- 2 boundary cases at absolute max constraints: n=max, all values=10^9
+- 2 off-by-one cases: index 0/n-1, loop boundary tests
+- 1 duplicate case with overflow implications
+- 1 mathematical: values just below 2^31-1, GCD edge cases
+- 1 alternating min-max pattern across large N
+- 1 multi-test-case case with accumulated state
 
-For multi_test_case format, include "t" line. Respect all constraints. No constraint violations.`;
+DO NOT repeat previous test cases. Generate HARDER overflow scenarios. Focus on cases where int32 overflow manifests.`;
   } else {
     return base + `
 
-This is RETRY ROUND ${retryRound} — previous tests still found NO bug. Generate MAXIMUM ADVERSARIAL tests:
-- INTEGER OVERFLOW is the #1 focus: products/sums of large numbers, values like 999999999, 1000000000, 2147483647
-- PRECISION edge cases: values that are off-by-one from boundaries
-- DEGENERATE inputs: empty-like (N=1), all zeros, all maximum values, all minimum values
-- WORST-CASE patterns for common algorithms: reverse sorted for bubble sort, already sorted for certain partitions
-- SPECIAL SEQUENCES: fibonacci-like growth, powers of 2, prime numbers near limits
-- Mix of positive and negative extremes
-- 3-4 overflow/large-number tests
-- 2-3 degenerate/corner cases
-- 2-3 adversarial algorithm-specific patterns
+## RETRY ROUND ${retryRound} — Maximum Adversarial (Still no bug found)
+Generate 12-15 MAXIMUM adversarial test cases targeting every known competitive programming pitfall:
+- 4-5 PURE OVERFLOW: edge cases like 2^31-2, 2^31-1, 10^9 * 10^9, cumulative sums, modular arithmetic traps
+- 2-3 OFF-BY-ONE: exact boundaries, loop iterations, array indices, subarray edge lengths (1, n, n-1)
+- 2 DUPLICATES: all same values, two distinct values only, MEX/partition sensitive
+- 1-2 WORST-CASE PATTERNS: reverse sorted for comparison sorts, already sorted for quicksort, alternating for partitions
+- 1-2 MATHEMATICAL EDGE: powers of 2, primes, GCD=1 (coprime), large differences
+- 1 STRING: if applicable — palindrome, all same char, max length
+- 1 GRAPH/TREE: if applicable — linear chain, star, complete graph
+- 1-2 MULTI-TEST-CASE: if applicable — t=max, state reset bugs, sum-of-n limits
 
-For multi_test_case format, include "t" line. Respect all constraints. No constraint violations.`;
+Generate COMPLETELY DIFFERENT test cases from previous rounds. Focus on adversarial patterns where buggy logic WILL fail.`;
   }
 }
 
