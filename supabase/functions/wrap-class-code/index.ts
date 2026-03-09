@@ -1,50 +1,37 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders, validateAuth, unauthorizedResponse } from "../_shared/auth.ts";
 
-const SYSTEM_PROMPT = `You are an expert competitive programmer. Your task is to wrap class-based code (like LeetCode solutions) into a complete, COMPILABLE, runnable program that reads from stdin and writes to stdout.
+const SYSTEM_PROMPT = `You are an expert competitive programmer. Your ONLY job is to generate a main() function that:
+1. Reads input from stdin according to the given schema
+2. Creates an instance of the Solution class
+3. Calls the correct method with parsed arguments
+4. Prints the result to stdout
 
 CRITICAL RULES:
-1. Keep the original class code EXACTLY as-is — do NOT modify, fix, rename, or optimize ANY part of it.
-2. Add ONLY:
-   - Necessary #include / import headers at the TOP (before the class)
-   - A main() function (or equivalent) AFTER the class
-   - Any helper functions for parsing (e.g., TreeNode/ListNode builders) BEFORE main but AFTER includes
-3. The main() function must:
-   - Read input from stdin according to the input_structure in the schema
-   - Create an instance of the Solution class (or whatever the class is named)
-   - Call the correct method with parsed arguments
-   - Print the result to stdout (followed by newline)
+- Output ONLY the main() function and any helper structs/functions needed (TreeNode, ListNode builders, etc.)
+- Do NOT output the class code — it will be prepended automatically
+- Do NOT output any #include or import statements — they will be added automatically
+- Do NOT output markdown, code fences, backticks, or explanations
+- Just raw code: helper structs (if needed) + main() function
 
-LANGUAGE-SPECIFIC RULES FOR C++:
-- Always include: #include <bits/stdc++.h> and using namespace std;
-- For vector<int> input: read n, then read n integers
-- For vector<vector<int>>: read rows, cols, then elements
-- For string: use cin >> s or getline as appropriate
-- For TreeNode*: define struct TreeNode if not in class, build from level-order array
-- For ListNode*: define struct ListNode if not in class, build from array
-- Use "int main()" not "void main()"
-- Print booleans as "true"/"false" (lowercase)
-- Print vectors space-separated on one line
-- Handle multi_test_case format: read t first, loop t times
+FOR C++:
+- Use "int main()" with "return 0;"
+- For vector<int>: read n, then n integers
+- For string: use cin >> s (single word) or getline(cin, s) if multiword
+- Print booleans as "true"/"false" (cout << boolalpha)
+- Print vectors space-separated
+- Handle multi_test_case: read t first, loop t times
+- Use long long where the output type requires it
 
-LANGUAGE-SPECIFIC RULES FOR PYTHON:
-- Import sys if needed for faster input
-- Handle input() / sys.stdin
-- Print result directly
+FOR PYTHON:
+- Use if __name__ == "__main__": block
+- Read with input() or sys.stdin
 
-LANGUAGE-SPECIFIC RULES FOR JAVA:
-- Add import java.util.*; at top
-- Create public class Main with public static void main
-- Instantiate Solution inside main
+FOR JAVA:
+- Generate public static void main(String[] args) only
+- Use Scanner for input
 
-COMPILATION CORRECTNESS IS THE #1 PRIORITY. Double-check:
-- All variables are declared before use
-- All brackets/braces are balanced
-- All semicolons are present (C++/Java)
-- No duplicate class/struct definitions
-- The class from user code is included exactly once
-
-RESPOND WITH ONLY THE COMPLETE CODE. No markdown, no code fences, no backticks, no explanation. Just raw compilable code.`;
+IMPORTANT: The input parsing must match the schema EXACTLY. Read variables in the correct order and on the correct lines.`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -60,74 +47,99 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    // Build a concise schema summary for the prompt
     const schemaSummary = {
       input_structure: schema?.input_structure,
       output_structure: schema?.output_structure,
       problem_meta: schema?.problem_meta,
-      hint: schema?.ai_generation_prompt_hint,
     };
 
-    // Wrap both codes in parallel
-    const wrapCode = async (code: string, label: string): Promise<string> => {
-      const userPrompt = `Language: ${language}
+    // Detect the method name and signature from the class code
+    const detectMethod = (code: string): string => {
+      // Find public methods that aren't constructors or helpers
+      const methodMatches = code.match(/(?:public:\s*[\s\S]*?)(\w[\w\s\*<>,]*?)\s+(\w+)\s*\(([^)]*)\)/g);
+      if (methodMatches) {
+        // Return the last public method (usually the main solving method)
+        return methodMatches[methodMatches.length - 1];
+      }
+      return "";
+    };
+
+    const methodHint = detectMethod(buggyCode) || detectMethod(correctCode) || "";
+
+    // Generate ONLY the main() function once, shared by both codes
+    const userPrompt = `Language: ${language}
 
 Problem Schema:
 ${JSON.stringify(schemaSummary, null, 2)}
 
-${label} class-based code to wrap:
-\`\`\`
-${code}
-\`\`\`
+The Solution class has this method signature (approximate):
+${methodHint}
 
-Generate the COMPLETE runnable program that includes this class exactly as-is, plus main() that reads stdin and prints stdout. Output ONLY raw code.`;
+Generate ONLY the main() function (and any needed helper structs like TreeNode/ListNode builders).
+Do NOT include the class code or #include statements.
+The main() must read stdin per the schema, call the Solution method, and print the result.
+Output ONLY raw code.`;
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: userPrompt },
-          ],
-          temperature: 0.2,
-          max_tokens: 4000,
-        }),
-      });
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.1,
+        max_tokens: 2000,
+      }),
+    });
 
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`AI error for ${label}: ${response.status} - ${errText}`);
-      }
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`AI error: ${response.status} - ${errText}`);
+    }
 
-      const data = await response.json();
-      let content = data.choices?.[0]?.message?.content;
-      if (!content) throw new Error(`No AI response for ${label}`);
+    const data = await response.json();
+    let mainCode = data.choices?.[0]?.message?.content;
+    if (!mainCode) throw new Error("No AI response for main() generation");
 
-      // Aggressively strip markdown fences and any non-code artifacts
-      content = content.trim();
-      // Remove all code fence variants (```cpp, ```c++, ```python, ```java, ```\n, etc.)
-      content = content.replace(/^```[\w\+\#]*\s*\n?/gm, "").replace(/\n?```\s*$/gm, "");
-      // Remove any leading/trailing backticks that might remain
-      content = content.replace(/^`+|`+$/g, "");
-      // Remove any "Output:" or "Explanation:" text that AI sometimes appends
-      const outputMarker = content.search(/\n(Output|Explanation|Note|Example|Input):/i);
-      if (outputMarker > 100) {
-        content = content.substring(0, outputMarker);
-      }
+    // Strip markdown fences and non-code artifacts
+    mainCode = mainCode.trim();
+    mainCode = mainCode.replace(/^```[\w\+\#]*\s*\n?/gm, "").replace(/\n?```\s*$/gm, "");
+    mainCode = mainCode.replace(/^`+|`+$/g, "");
+    const outputMarker = mainCode.search(/\n(Output|Explanation|Note|Example|Input):/i);
+    if (outputMarker > 50) {
+      mainCode = mainCode.substring(0, outputMarker);
+    }
+    mainCode = mainCode.trim();
 
-      return content.trim();
-    };
+    // Remove any #include or using namespace lines the AI might have sneaked in
+    mainCode = mainCode.replace(/^#include\s+.*$/gm, "");
+    mainCode = mainCode.replace(/^using namespace\s+.*$/gm, "");
+    mainCode = mainCode.trim();
 
-    // Run both wraps in parallel
-    const [wrappedBuggy, wrappedCorrect] = await Promise.all([
-      wrapCode(buggyCode, "Buggy"),
-      wrapCode(correctCode, "Correct"),
-    ]);
+    // Assemble complete programs: includes + ORIGINAL class (untouched) + shared main()
+    let wrappedBuggy: string;
+    let wrappedCorrect: string;
+
+    if (language === "cpp" || language === "c") {
+      const header = `#include <bits/stdc++.h>\nusing namespace std;\n\n`;
+      wrappedBuggy = header + buggyCode.trim() + "\n\n" + mainCode;
+      wrappedCorrect = header + correctCode.trim() + "\n\n" + mainCode;
+    } else if (language === "java") {
+      // For Java, wrap in a Main class
+      wrappedBuggy = buggyCode.trim() + "\n\npublic class Main {\n" + mainCode + "\n}";
+      wrappedCorrect = correctCode.trim() + "\n\npublic class Main {\n" + mainCode + "\n}";
+    } else if (language === "python") {
+      wrappedBuggy = buggyCode.trim() + "\n\n" + mainCode;
+      wrappedCorrect = correctCode.trim() + "\n\n" + mainCode;
+    } else {
+      wrappedBuggy = buggyCode.trim() + "\n\n" + mainCode;
+      wrappedCorrect = correctCode.trim() + "\n\n" + mainCode;
+    }
 
     return new Response(
       JSON.stringify({
