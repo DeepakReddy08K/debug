@@ -53,9 +53,7 @@ serve(async (req) => {
 
     const detectMethod = (code: string): string => {
       const methodMatches = code.match(/(?:public:\s*[\s\S]*?)(\w[\w\s\*<>,]*?)\s+(\w+)\s*\(([^)]*)\)/g);
-      if (methodMatches) {
-        return methodMatches[methodMatches.length - 1];
-      }
+      if (methodMatches) return methodMatches[methodMatches.length - 1];
       return "";
     };
 
@@ -74,7 +72,7 @@ Do NOT include the class code or #include statements.
 The main() must read stdin per the schema, call the Solution method, and print the result.
 Output ONLY raw code.`;
 
-    const response = await callAIWithFailover({
+    const { response, provider, model } = await callAIWithFailover({
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
@@ -88,22 +86,16 @@ Output ONLY raw code.`;
     let mainCode = data.choices?.[0]?.message?.content;
     if (!mainCode) throw new Error("No AI response for main() generation");
 
-    // Strip markdown fences and non-code artifacts
     mainCode = mainCode.trim();
     mainCode = mainCode.replace(/^```[\w\+\#]*\s*\n?/gm, "").replace(/\n?```\s*$/gm, "");
     mainCode = mainCode.replace(/^`+|`+$/g, "");
     const outputMarker = mainCode.search(/\n(Output|Explanation|Note|Example|Input):/i);
-    if (outputMarker > 50) {
-      mainCode = mainCode.substring(0, outputMarker);
-    }
+    if (outputMarker > 50) mainCode = mainCode.substring(0, outputMarker);
     mainCode = mainCode.trim();
-
-    // Remove any #include or using namespace lines the AI might have sneaked in
     mainCode = mainCode.replace(/^#include\s+.*$/gm, "");
     mainCode = mainCode.replace(/^using namespace\s+.*$/gm, "");
     mainCode = mainCode.trim();
 
-    // Assemble complete programs
     let wrappedBuggy: string;
     let wrappedCorrect: string;
 
@@ -114,9 +106,6 @@ Output ONLY raw code.`;
     } else if (language === "java") {
       wrappedBuggy = buggyCode.trim() + "\n\npublic class Main {\n" + mainCode + "\n}";
       wrappedCorrect = correctCode.trim() + "\n\npublic class Main {\n" + mainCode + "\n}";
-    } else if (language === "python") {
-      wrappedBuggy = buggyCode.trim() + "\n\n" + mainCode;
-      wrappedCorrect = correctCode.trim() + "\n\n" + mainCode;
     } else {
       wrappedBuggy = buggyCode.trim() + "\n\n" + mainCode;
       wrappedCorrect = correctCode.trim() + "\n\n" + mainCode;
@@ -126,6 +115,8 @@ Output ONLY raw code.`;
       JSON.stringify({
         wrappedBuggyCode: wrappedBuggy,
         wrappedCorrectCode: wrappedCorrect,
+        ai_provider: provider,
+        ai_model: model,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

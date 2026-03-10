@@ -26,31 +26,17 @@ CRITICAL RESPONSE RULES:
 
     if (runContext) {
       systemPrompt += `\n\n## Current Debugging Context\n`;
-      if (runContext.language) {
-        systemPrompt += `**Language:** ${runContext.language}\n`;
-      }
-      if (runContext.buggyCode) {
-        systemPrompt += `\n**User's Buggy Code:**\n\`\`\`${runContext.language || "cpp"}\n${runContext.buggyCode}\n\`\`\`\n`;
-      }
-      if (runContext.correctCode) {
-        systemPrompt += `\n**Correct Reference Code:**\n\`\`\`${runContext.language || "cpp"}\n${runContext.correctCode}\n\`\`\`\n`;
-      }
-      if (runContext.diagnosis) {
-        systemPrompt += `\n**AI Diagnosis:**\n${JSON.stringify(runContext.diagnosis, null, 2)}\n`;
-      }
-      if (runContext.failingInput) {
-        systemPrompt += `\n**Failing Input:**\n\`\`\`\n${runContext.failingInput}\n\`\`\`\n`;
-      }
-      if (runContext.outputBuggy) {
-        systemPrompt += `**Buggy Output:** \`${runContext.outputBuggy}\`\n`;
-      }
-      if (runContext.outputCorrect) {
-        systemPrompt += `**Correct Output:** \`${runContext.outputCorrect}\`\n`;
-      }
+      if (runContext.language) systemPrompt += `**Language:** ${runContext.language}\n`;
+      if (runContext.buggyCode) systemPrompt += `\n**User's Buggy Code:**\n\`\`\`${runContext.language || "cpp"}\n${runContext.buggyCode}\n\`\`\`\n`;
+      if (runContext.correctCode) systemPrompt += `\n**Correct Reference Code:**\n\`\`\`${runContext.language || "cpp"}\n${runContext.correctCode}\n\`\`\`\n`;
+      if (runContext.diagnosis) systemPrompt += `\n**AI Diagnosis:**\n${JSON.stringify(runContext.diagnosis, null, 2)}\n`;
+      if (runContext.failingInput) systemPrompt += `\n**Failing Input:**\n\`\`\`\n${runContext.failingInput}\n\`\`\`\n`;
+      if (runContext.outputBuggy) systemPrompt += `**Buggy Output:** \`${runContext.outputBuggy}\`\n`;
+      if (runContext.outputCorrect) systemPrompt += `**Correct Output:** \`${runContext.outputCorrect}\`\n`;
       systemPrompt += `\nUse this context to answer the user's questions. Reference specific lines, variables, and logic from the code above.`;
     }
 
-    const response = await callAIWithFailover({
+    const { response, provider, model } = await callAIWithFailover({
       messages: [
         { role: "system", content: systemPrompt },
         ...messages,
@@ -59,9 +45,15 @@ CRITICAL RESPONSE RULES:
       stream: true,
     });
 
-    return new Response(response.body, {
-      headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+    // For streaming, add provider info as a custom header
+    const headers = new Headers({
+      ...corsHeaders,
+      "Content-Type": "text/event-stream",
+      "X-AI-Provider": provider,
+      "X-AI-Model": model,
     });
+
+    return new Response(response.body, { headers });
   } catch (e) {
     console.error("debug-chat error:", e);
     return new Response(

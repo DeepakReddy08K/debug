@@ -72,135 +72,52 @@ JSON format (REQUIRED):
 }`;
 
   if (retryRound === 0) {
-    return base + `
-
-## RETRY ROUND 0 — Standard Adversarial Coverage
-Generate 8-10 test cases covering all 8 categories:
-- 1-2 boundary cases (n=1, n=2, n=max)
-- 2-3 overflow-targeted cases (10^9 values, sum overflow, product overflow)
-- 1-2 off-by-one cases (index edges, subarray boundaries)
-- 1 duplicate/repeated value case
-- 1 mathematical trap (primes, powers of 2, GCD/LCM)
-- 1 string case (if strings are input)
-- 1 multi-test-case trap (if applicable)
-- 1 graph/tree case (if applicable)
-
-Each test case should target a specific subtle bug. MUST respect constraints. NO constraint violations.`;
+    return base + `\n\n## RETRY ROUND 0 — Standard Adversarial Coverage\nGenerate 8-10 test cases covering all 8 categories. Each test case should target a specific subtle bug. MUST respect constraints. NO constraint violations.`;
   } else if (retryRound === 1) {
-    return base + `
-
-## RETRY ROUND 1 — Aggressive Overflow Focus (Previous tests found NO bug)
-Generate 10-12 adversarial test cases HEAVILY FOCUSED on integer overflow:
-- 3-4 pure overflow cases: all a[i]=10^9, n=10^5; large sums; products of large numbers; answer exceeding 2^31-1
-- 2 boundary cases at absolute max constraints: n=max, all values=10^9
-- 2 off-by-one cases: index 0/n-1, loop boundary tests
-- 1 duplicate case with overflow implications
-- 1 mathematical: values just below 2^31-1, GCD edge cases
-- 1 alternating min-max pattern across large N
-- 1 multi-test-case case with accumulated state
-
-DO NOT repeat previous test cases. Generate HARDER overflow scenarios. Focus on cases where int32 overflow manifests.`;
+    return base + `\n\n## RETRY ROUND 1 — Aggressive Overflow Focus (Previous tests found NO bug)\nGenerate 10-12 adversarial test cases HEAVILY FOCUSED on integer overflow. DO NOT repeat previous test cases.`;
   } else {
-    return base + `
-
-## RETRY ROUND ${retryRound} — Maximum Adversarial (Still no bug found)
-Generate 12-15 MAXIMUM adversarial test cases targeting every known competitive programming pitfall:
-- 4-5 PURE OVERFLOW: edge cases like 2^31-2, 2^31-1, 10^9 * 10^9, cumulative sums, modular arithmetic traps
-- 2-3 OFF-BY-ONE: exact boundaries, loop iterations, array indices, subarray edge lengths (1, n, n-1)
-- 2 DUPLICATES: all same values, two distinct values only, MEX/partition sensitive
-- 1-2 WORST-CASE PATTERNS: reverse sorted for comparison sorts, already sorted for quicksort, alternating for partitions
-- 1-2 MATHEMATICAL EDGE: powers of 2, primes, GCD=1 (coprime), large differences
-- 1 STRING: if applicable — palindrome, all same char, max length
-- 1 GRAPH/TREE: if applicable — linear chain, star, complete graph
-- 1-2 MULTI-TEST-CASE: if applicable — t=max, state reset bugs, sum-of-n limits
-
-Generate COMPLETELY DIFFERENT test cases from previous rounds. Focus on adversarial patterns where buggy logic WILL fail.`;
+    return base + `\n\n## RETRY ROUND ${retryRound} — Maximum Adversarial (Still no bug found)\nGenerate 12-15 MAXIMUM adversarial test cases targeting every known competitive programming pitfall. Generate COMPLETELY DIFFERENT test cases from previous rounds.`;
   }
 }
 
 function extractJsonFromResponse(response: string): any {
-  let cleaned = response
-    .replace(/```json\s*/gi, "")
-    .replace(/```\s*/g, "")
-    .trim();
-
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    // continue to repair
-  }
+  let cleaned = response.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+  try { return JSON.parse(cleaned); } catch { /* continue */ }
 
   const testCasesMatch = cleaned.match(/"test_cases"\s*:\s*\[/);
   if (testCasesMatch && testCasesMatch.index !== undefined) {
     const arrayStart = testCasesMatch.index + testCasesMatch[0].length;
     const completeObjects: string[] = [];
-    let depth = 0;
-    let objStart = -1;
-
+    let depth = 0, objStart = -1;
     for (let i = arrayStart; i < cleaned.length; i++) {
       const ch = cleaned[i];
-      if (ch === '{') {
-        if (depth === 0) objStart = i;
-        depth++;
-      } else if (ch === '}') {
-        depth--;
-        if (depth === 0 && objStart !== -1) {
-          const obj = cleaned.substring(objStart, i + 1);
-          try {
-            JSON.parse(obj);
-            completeObjects.push(obj);
-          } catch {
-            // incomplete object, skip
-          }
-          objStart = -1;
-        }
-      }
+      if (ch === '{') { if (depth === 0) objStart = i; depth++; }
+      else if (ch === '}') { depth--; if (depth === 0 && objStart !== -1) { const obj = cleaned.substring(objStart, i + 1); try { JSON.parse(obj); completeObjects.push(obj); } catch { /* skip */ } objStart = -1; } }
     }
-
     if (completeObjects.length > 0) {
-      const reconstructed = `{"test_cases":[${completeObjects.join(",")}],"total_count":${completeObjects.length},"generation_notes":"Recovered from truncated response"}`;
-      return JSON.parse(reconstructed);
+      return JSON.parse(`{"test_cases":[${completeObjects.join(",")}],"total_count":${completeObjects.length},"generation_notes":"Recovered from truncated response"}`);
     }
   }
 
   const jsonStart = cleaned.search(/[\{\[]/);
   const jsonEnd = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
-  if (jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON found in response");
-
+  if (jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON found");
   cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
-  cleaned = cleaned
-    .replace(/,\s*}/g, "}")
-    .replace(/,\s*]/g, "]")
-    .replace(/[\x00-\x1F\x7F]/g, (c) => c === "\n" || c === "\t" ? c : "");
-
+  cleaned = cleaned.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]").replace(/[\x00-\x1F\x7F]/g, (c) => c === "\n" || c === "\t" ? c : "");
   let braces = 0, brackets = 0;
-  for (const ch of cleaned) {
-    if (ch === '{') braces++;
-    if (ch === '}') braces--;
-    if (ch === '[') brackets++;
-    if (ch === ']') brackets--;
-  }
+  for (const ch of cleaned) { if (ch === '{') braces++; if (ch === '}') braces--; if (ch === '[') brackets++; if (ch === ']') brackets--; }
   while (brackets > 0) { cleaned += ']'; brackets--; }
   while (braces > 0) { cleaned += '}'; braces--; }
   cleaned = cleaned.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
-
   return JSON.parse(cleaned);
 }
 
 function trimSchema(schema: any): any {
   const trimmed: any = {};
-  if (schema.problem_meta) {
-    trimmed.problem_meta = { name: schema.problem_meta.name, problem_type: schema.problem_meta.problem_type };
-  }
-  if (schema.input_structure) {
-    trimmed.input_structure = schema.input_structure;
-  }
-  if (schema.output_structure) {
-    trimmed.output_structure = schema.output_structure;
-  }
-  if (schema.ai_generation_prompt_hint) {
-    trimmed.hint = schema.ai_generation_prompt_hint;
-  }
+  if (schema.problem_meta) trimmed.problem_meta = { name: schema.problem_meta.name, problem_type: schema.problem_meta.problem_type };
+  if (schema.input_structure) trimmed.input_structure = schema.input_structure;
+  if (schema.output_structure) trimmed.output_structure = schema.output_structure;
+  if (schema.ai_generation_prompt_hint) trimmed.hint = schema.ai_generation_prompt_hint;
   return trimmed;
 }
 
@@ -219,10 +136,10 @@ serve(async (req) => {
 
     const SYSTEM_PROMPT = getSystemPrompt(retryRound);
     const trimmedSchema = trimSchema(schema);
-    const roundLabel = retryRound > 0 ? ` (retry round ${retryRound} — generate DIFFERENT and HARDER tests than before, focus on overflow/edge cases)` : "";
-    const userPrompt = `Generate test cases for this problem${roundLabel}:\n\n${JSON.stringify(trimmedSchema, null, 2)}\n\nGenerate 8-10 diverse test cases. Each input must be a literal string. Keep N ≤ 200.${retryRound > 0 ? " Previous basic tests found no bug — try harder edge cases, overflow scenarios, and adversarial inputs." : ""}`;
+    const roundLabel = retryRound > 0 ? ` (retry round ${retryRound} — generate DIFFERENT and HARDER tests)` : "";
+    const userPrompt = `Generate test cases for this problem${roundLabel}:\n\n${JSON.stringify(trimmedSchema, null, 2)}\n\nGenerate 8-10 diverse test cases. Each input must be a literal string. Keep N ≤ 200.${retryRound > 0 ? " Previous basic tests found no bug — try harder edge cases." : ""}`;
 
-    const response = await callAIWithFailover({
+    const { response, provider, model } = await callAIWithFailover({
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
@@ -255,8 +172,7 @@ serve(async (req) => {
       parsed.test_cases = parsed.test_cases.filter((tc: { input: string }) => {
         if (typeof tc.input !== "string") return false;
         if (tc.input.length > 50000) return false;
-        const hasCode = /\b(map|join|range|lambda|for |import |list\(|\.join\()\b/.test(tc.input);
-        return !hasCode;
+        return !/\b(map|join|range|lambda|for |import |list\(|\.join\()\b/.test(tc.input);
       });
       parsed.total_count = parsed.test_cases.length;
     }
@@ -269,18 +185,14 @@ serve(async (req) => {
 
     if (runId && parsed.test_cases.length > 0) {
       const testCaseRows = parsed.test_cases.map((tc: { input: string }) => ({
-        run_id: runId,
-        input_data: tc.input,
-        is_failing: false,
+        run_id: runId, input_data: tc.input, is_failing: false,
       }));
-
       const { error: insertError } = await auth.supabase.from("test_cases").insert(testCaseRows);
       if (insertError) console.error("Failed to store test cases:", insertError);
-
       await auth.supabase.from("runs").update({ status: "tests_generated" }).eq("id", runId);
     }
 
-    return new Response(JSON.stringify({ result: parsed }), {
+    return new Response(JSON.stringify({ result: parsed, ai_provider: provider, ai_model: model }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

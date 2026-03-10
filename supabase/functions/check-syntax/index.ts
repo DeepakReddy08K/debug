@@ -64,7 +64,7 @@ serve(async (req) => {
     userPrompt += `## Correct/Reference Code:\n\`\`\`\n${correctCode}\n\`\`\`\n\n`;
     userPrompt += "Analyze for syntax and runtime errors. Produce the JSON now.";
 
-    const response = await callAIWithFailover({
+    const { response, provider, model } = await callAIWithFailover({
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
@@ -96,7 +96,7 @@ serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ result: parsed }), {
+    return new Response(JSON.stringify({ result: parsed, ai_provider: provider, ai_model: model }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
