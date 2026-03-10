@@ -85,6 +85,7 @@ export type Database = {
       runs: {
         Row: {
           ai_diagnosis: Json | null
+          ai_model_used: string | null
           buggy_code: string
           constraints_json: Json | null
           correct_code: string
@@ -101,6 +102,7 @@ export type Database = {
         }
         Insert: {
           ai_diagnosis?: Json | null
+          ai_model_used?: string | null
           buggy_code: string
           constraints_json?: Json | null
           correct_code: string
@@ -117,6 +119,7 @@ export type Database = {
         }
         Update: {
           ai_diagnosis?: Json | null
+          ai_model_used?: string | null
           buggy_code?: string
           constraints_json?: Json | null
           correct_code?: string

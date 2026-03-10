@@ -3,6 +3,7 @@
  * 
  * Tries providers in order: Lovable → Google Gemini → Anthropic Claude
  * Automatically switches on 402 (credits exhausted), 429 (rate limit), or 5xx errors.
+ * Returns both the response and which provider was used.
  */
 
 export interface AIMessage {
@@ -19,15 +20,21 @@ export interface AIRequestOptions {
   response_format?: { type: string };
 }
 
+export interface AIFailoverResult {
+  response: Response;
+  provider: string;
+  model: string;
+}
+
 interface ProviderConfig {
   name: string;
   keyEnvVar: string;
+  getModel: (requestedModel?: string) => string;
   call: (options: AIRequestOptions, apiKey: string) => Promise<Response>;
 }
 
 // Model mapping for each provider
 function getGeminiModel(requestedModel?: string): string {
-  // Map Lovable model names to Gemini model names
   if (!requestedModel) return "gemini-2.5-flash";
   if (requestedModel.includes("gemini-3-flash")) return "gemini-2.5-flash";
   if (requestedModel.includes("gemini-2.5-flash")) return "gemini-2.5-flash";
@@ -38,6 +45,10 @@ function getGeminiModel(requestedModel?: string): string {
 
 function getAnthropicModel(_requestedModel?: string): string {
   return "claude-sonnet-4-20250514";
+}
+
+function getLovableModel(requestedModel?: string): string {
+  return requestedModel || "google/gemini-2.5-flash";
 }
 
 // --- LOVABLE PROVIDER ---
@@ -63,7 +74,6 @@ async function callLovable(options: AIRequestOptions, apiKey: string): Promise<R
 async function callGemini(options: AIRequestOptions, apiKey: string): Promise<Response> {
   const model = getGeminiModel(options.model);
   
-  // Use Google's OpenAI-compatible endpoint
   return await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
     method: "POST",
     headers: {
@@ -91,8 +101,13 @@ async function callAnthropic(options: AIRequestOptions, apiKey: string): Promise
     .filter(m => m.role !== "system")
     .map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
 
+  // For Anthropic, if response_format is json_object, add instruction to system prompt
+  let effectiveSystem = systemMsg;
+  if (options.response_format?.type === "json_object") {
+    effectiveSystem += "\n\nIMPORTANT: You MUST respond with ONLY valid JSON. No markdown, no code fences, no explanations outside the JSON.";
+  }
+
   if (options.stream) {
-    // Anthropic streaming - need to convert SSE format to OpenAI-compatible SSE
     const anthropicResp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -102,7 +117,7 @@ async function callAnthropic(options: AIRequestOptions, apiKey: string): Promise
       },
       body: JSON.stringify({
         model,
-        system: systemMsg,
+        system: effectiveSystem,
         messages: conversationMsgs,
         max_tokens: options.max_tokens || 4096,
         temperature: options.temperature ?? 0.3,
@@ -169,7 +184,7 @@ async function callAnthropic(options: AIRequestOptions, apiKey: string): Promise
     },
     body: JSON.stringify({
       model,
-      system: systemMsg,
+      system: effectiveSystem,
       messages: conversationMsgs,
       max_tokens: options.max_tokens || 4096,
       temperature: options.temperature ?? 0.3,
@@ -197,17 +212,17 @@ async function callAnthropic(options: AIRequestOptions, apiKey: string): Promise
 
 // Provider chain
 const PROVIDERS: ProviderConfig[] = [
-  { name: "Lovable", keyEnvVar: "LOVABLE_API_KEY", call: callLovable },
-  { name: "Google Gemini", keyEnvVar: "GEMINI_API_KEY", call: callGemini },
-  { name: "Anthropic Claude", keyEnvVar: "ANTHROPIC_API_KEY", call: callAnthropic },
+  { name: "Lovable", keyEnvVar: "LOVABLE_API_KEY", getModel: getLovableModel, call: callLovable },
+  { name: "Google Gemini", keyEnvVar: "GEMINI_API_KEY", getModel: getGeminiModel, call: callGemini },
+  { name: "Anthropic Claude", keyEnvVar: "ANTHROPIC_API_KEY", getModel: getAnthropicModel, call: callAnthropic },
 ];
 
 /**
  * Call AI with automatic failover across providers.
- * Returns the Response object (streaming or JSON depending on options.stream).
+ * Returns the Response object, provider name, and model used.
  * Throws if ALL providers fail.
  */
-export async function callAIWithFailover(options: AIRequestOptions): Promise<Response> {
+export async function callAIWithFailover(options: AIRequestOptions): Promise<AIFailoverResult> {
   const errors: string[] = [];
 
   for (const provider of PROVIDERS) {
@@ -222,8 +237,9 @@ export async function callAIWithFailover(options: AIRequestOptions): Promise<Res
       const response = await provider.call(options, apiKey);
 
       if (response.ok) {
-        console.log(`[AI Failover] ${provider.name} succeeded`);
-        return response;
+        const modelUsed = `${provider.name}/${provider.getModel(options.model)}`;
+        console.log(`[AI Failover] ${provider.name} succeeded (model: ${modelUsed})`);
+        return { response, provider: provider.name, model: modelUsed };
       }
 
       // Failover on 402 (credits), 429 (rate limit), 5xx (server error)
@@ -240,7 +256,7 @@ export async function callAIWithFailover(options: AIRequestOptions): Promise<Res
       throw new Error(`AI request failed: ${response.status} - ${errText.substring(0, 200)}`);
     } catch (e) {
       if (e instanceof Error && e.message.startsWith("AI request failed:")) {
-        throw e; // Re-throw client errors
+        throw e;
       }
       errors.push(`${provider.name}: ${e instanceof Error ? e.message : "Unknown error"}`);
       console.warn(`[AI Failover] ${provider.name} threw error, trying next...`);
@@ -248,7 +264,6 @@ export async function callAIWithFailover(options: AIRequestOptions): Promise<Res
     }
   }
 
-  // All providers failed
   console.error("[AI Failover] All providers failed:", errors);
   throw new Error(`All AI providers failed:\n${errors.join("\n")}`);
 }

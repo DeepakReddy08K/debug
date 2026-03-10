@@ -93,9 +93,13 @@ const Index = () => {
         execCorrect = wrapData.wrappedCorrectCode;
       }
 
+      // Track which AI model was used (from the first AI call)
+      const aiModelUsed = analysisData?.ai_model || null;
+
       const { data: runData, error: insertError } = await supabase.from("runs").insert({
         user_id: user!.id, buggy_code: cleanBuggy, correct_code: cleanCorrect, language: detectedLanguage,
         constraints_json: schema, status: "analyzed", sample_input: additionalInfo || null,
+        ai_model_used: aiModelUsed,
       }).select("id").single();
       if (insertError) console.error("Failed to store run:", insertError);
       const runId = runData?.id;

@@ -52,7 +52,7 @@ RESPONSE FORMAT — You MUST return ONLY valid JSON, no markdown, no code fences
 }
 
 RULES:
-- For logic_bug scenario: ALWAYS include failing_test with the first failing test case data. This is the MOST important part — show users exactly which input breaks their code.
+- For logic_bug scenario: ALWAYS include failing_test with the first failing test case data.
 - For compilation_error: set failing_test to null, list the compilation issues in issues array with type "compilation".
 - For syntax_error or all_correct: set failing_test to null.
 - Maximum 5 issues. Only the most critical ones.
@@ -60,7 +60,7 @@ RULES:
 - Be SPECIFIC: "Line 12: uses < instead of <=" not "comparison operator might be wrong"
 - No generic advice. Every point must reference actual code.
 - For logic bugs: trace through the failing input step-by-step mentally, then explain the divergence point.
-- For all_correct: list ALL code differences you find between buggy and correct code, even minor ones like endl vs \\n. Explain whether each could cause issues.`;
+- For all_correct: list ALL code differences you find between buggy and correct code, even minor ones.`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -74,13 +74,8 @@ serve(async (req) => {
 
   try {
     const {
-      buggyCode,
-      correctCode,
-      language,
-      syntaxErrors,
-      executionResults,
-      compilationError,
-      runId,
+      buggyCode, correctCode, language,
+      syntaxErrors, executionResults, compilationError, runId,
     } = await req.json();
 
     let userPrompt = `Language: ${language || "cpp"}\n\n`;
@@ -88,54 +83,34 @@ serve(async (req) => {
     userPrompt += `## Correct Code:\n\`\`\`\n${correctCode}\n\`\`\`\n\n`;
 
     if (syntaxErrors?.has_errors) {
-      userPrompt += `## Scenario: SYNTAX/RUNTIME ERRORS DETECTED\n`;
-      userPrompt += `Errors found by static analysis:\n${JSON.stringify(syntaxErrors.errors, null, 2)}\n\n`;
-      userPrompt += `Analyze these errors and provide fixes.`;
+      userPrompt += `## Scenario: SYNTAX/RUNTIME ERRORS DETECTED\nErrors found:\n${JSON.stringify(syntaxErrors.errors, null, 2)}\n\nAnalyze these errors and provide fixes.`;
     } else if (compilationError) {
-      userPrompt += `## Scenario: COMPILATION ERROR\n`;
-      userPrompt += `The code failed to compile when executed by the judge.\n`;
-      userPrompt += `**Compiler Output:**\n\`\`\`\n${compilationError}\n\`\`\`\n\n`;
-      if (executionResults?.results?.length > 0) {
-        const firstResult = executionResults.results[0];
-        if (firstResult.buggy_stderr) {
-          userPrompt += `**Stderr:** ${firstResult.buggy_stderr}\n`;
-        }
+      userPrompt += `## Scenario: COMPILATION ERROR\nThe code failed to compile.\n**Compiler Output:**\n\`\`\`\n${compilationError}\n\`\`\`\n`;
+      if (executionResults?.results?.length > 0 && executionResults.results[0].buggy_stderr) {
+        userPrompt += `**Stderr:** ${executionResults.results[0].buggy_stderr}\n`;
       }
-      userPrompt += `\nAnalyze the compilation error. Identify the exact issue and provide a specific fix.`;
+      userPrompt += `\nAnalyze the compilation error and provide a fix.`;
     } else if (executionResults?.summary?.failing > 0) {
       const firstFail = executionResults.summary.first_failing;
-      userPrompt += `## Scenario: FAILING TEST CASE FOUND\n`;
-      userPrompt += `Total: ${executionResults.summary.total} tests, ${executionResults.summary.failing} failing\n\n`;
-      userPrompt += `### First Failing Test Case:\n`;
-      userPrompt += `**Input:**\n\`\`\`\n${firstFail.input}\n\`\`\`\n`;
-      userPrompt += `**Buggy Output:** \`${firstFail.buggy_output}\`\n`;
-      userPrompt += `**Correct Output:** \`${firstFail.correct_output}\`\n`;
-      if (firstFail.buggy_status && firstFail.buggy_status !== "OK") {
-        userPrompt += `**Buggy Status:** ${firstFail.buggy_status}\n`;
-      }
-      if (firstFail.buggy_stderr) {
-        userPrompt += `**Buggy Stderr:** ${firstFail.buggy_stderr}\n`;
-      }
-
-      const otherFailing = executionResults.results
-        ?.filter((r: any) => r.is_failing)
-        ?.slice(1, 3);
+      userPrompt += `## Scenario: FAILING TEST CASE FOUND\nTotal: ${executionResults.summary.total} tests, ${executionResults.summary.failing} failing\n\n`;
+      userPrompt += `### First Failing Test Case:\n**Input:**\n\`\`\`\n${firstFail.input}\n\`\`\`\n`;
+      userPrompt += `**Buggy Output:** \`${firstFail.buggy_output}\`\n**Correct Output:** \`${firstFail.correct_output}\`\n`;
+      if (firstFail.buggy_status && firstFail.buggy_status !== "OK") userPrompt += `**Buggy Status:** ${firstFail.buggy_status}\n`;
+      if (firstFail.buggy_stderr) userPrompt += `**Buggy Stderr:** ${firstFail.buggy_stderr}\n`;
+      const otherFailing = executionResults.results?.filter((r: any) => r.is_failing)?.slice(1, 3);
       if (otherFailing?.length > 0) {
         userPrompt += `\n### Additional Failing Cases:\n`;
         for (const tc of otherFailing) {
           userPrompt += `- Input: \`${tc.input.substring(0, 100)}\` → Buggy: \`${tc.buggy_output}\` vs Correct: \`${tc.correct_output}\`\n`;
         }
       }
-
-      userPrompt += `\nFind the exact logical bug causing the output mismatch. Be specific.`;
+      userPrompt += `\nFind the exact logical bug causing the output mismatch.`;
     } else {
-      userPrompt += `## Scenario: ALL TESTS PASSED\n`;
-      userPrompt += `All ${executionResults?.summary?.total || 0} test cases produced identical output.\n\n`;
-      userPrompt += `IMPORTANT: Do a careful LINE-BY-LINE comparison of the buggy code vs the correct code. List EVERY difference you find, no matter how small (e.g., "endl" vs "\\n", different variable names, different loop bounds, etc.). For each difference, explain whether it could cause issues on an online judge.\n\n`;
-      userPrompt += `If the codes are logically identical, confirm that and suggest improvements.`;
+      userPrompt += `## Scenario: ALL TESTS PASSED\nAll ${executionResults?.summary?.total || 0} test cases produced identical output.\n\n`;
+      userPrompt += `Do a careful LINE-BY-LINE comparison. List EVERY difference, no matter how small.`;
     }
 
-    const response = await callAIWithFailover({
+    const { response, provider, model } = await callAIWithFailover({
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
@@ -171,21 +146,21 @@ serve(async (req) => {
     if (!parsed.scenario) {
       parsed.scenario = compilationError ? "compilation_error" 
         : syntaxErrors?.has_errors ? "syntax_error"
-        : executionResults?.summary?.failing > 0 ? "logic_bug"
-        : "all_correct";
+        : executionResults?.summary?.failing > 0 ? "logic_bug" : "all_correct";
     }
     if (!parsed.verdict) parsed.verdict = "Analysis complete.";
     if (!parsed.issues) parsed.issues = [];
     if (!parsed.improvements) parsed.improvements = [];
 
     if (runId) {
-      await auth.supabase
-        .from("runs")
-        .update({ ai_diagnosis: parsed, status: "diagnosed" })
-        .eq("id", runId);
+      await auth.supabase.from("runs").update({
+        ai_diagnosis: parsed,
+        status: "diagnosed",
+        ai_model_used: model,
+      }).eq("id", runId);
     }
 
-    return new Response(JSON.stringify({ diagnosis: parsed }), {
+    return new Response(JSON.stringify({ diagnosis: parsed, ai_provider: provider, ai_model: model }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

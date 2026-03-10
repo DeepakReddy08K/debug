@@ -89,7 +89,7 @@ serve(async (req) => {
     }
     userPrompt += "Produce the comprehensive JSON schema now.";
 
-    const response = await callAIWithFailover({
+    const { response, provider, model } = await callAIWithFailover({
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
@@ -105,8 +105,7 @@ serve(async (req) => {
 
     if (!content) {
       return new Response(JSON.stringify({ error: "No response from AI" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -118,9 +117,7 @@ serve(async (req) => {
         .trim();
 
       const jsonStart = cleaned.search(/[\{\[]/);
-      if (jsonStart === -1) {
-        throw new Error("No JSON object found in response");
-      }
+      if (jsonStart === -1) throw new Error("No JSON object found in response");
 
       const isArray = cleaned[jsonStart] === '[';
       const jsonEnd = isArray ? cleaned.lastIndexOf(']') : cleaned.lastIndexOf('}');
@@ -138,34 +135,24 @@ serve(async (req) => {
         .replace(/,\s*]/g, "]")
         .replace(/[\x00-\x1F\x7F]/g, "");
 
-      try {
-        return JSON.parse(cleaned);
-      } catch (_e) {
-        // ignore, try repair
-      }
+      try { return JSON.parse(cleaned); } catch { /* try repair */ }
 
       function balanceAndParse(str: string): unknown {
-        let openBraces = 0, openBrackets = 0;
-        let lastGoodPos = -1;
-        let inString = false;
-        let escape = false;
-
+        let openBraces = 0, openBrackets = 0, lastGoodPos = -1;
+        let inString = false, escape = false;
         for (let i = 0; i < str.length; i++) {
           const ch = str[i];
           if (escape) { escape = false; continue; }
           if (ch === '\\' && inString) { escape = true; continue; }
           if (ch === '"') { inString = !inString; continue; }
           if (inString) continue;
-
           if (ch === '{') openBraces++;
           else if (ch === '}') { openBraces--; if (openBraces >= 0) lastGoodPos = i; }
           else if (ch === '[') openBrackets++;
           else if (ch === ']') { openBrackets--; if (openBrackets >= 0) lastGoodPos = i; }
         }
-
         if (lastGoodPos > 0) {
-          let attempt = str.substring(0, lastGoodPos + 1);
-          attempt = attempt.replace(/,\s*$/, "");
+          let attempt = str.substring(0, lastGoodPos + 1).replace(/,\s*$/, "");
           let ob = 0, obrk = 0;
           inString = false; escape = false;
           for (let i = 0; i < attempt.length; i++) {
@@ -174,35 +161,21 @@ serve(async (req) => {
             if (ch === '\\' && inString) { escape = true; continue; }
             if (ch === '"') { inString = !inString; continue; }
             if (inString) continue;
-            if (ch === '{') ob++;
-            else if (ch === '}') ob--;
-            else if (ch === '[') obrk++;
-            else if (ch === ']') obrk--;
+            if (ch === '{') ob++; else if (ch === '}') ob--;
+            if (ch === '[') obrk++; else if (ch === ']') obrk--;
           }
           attempt += "]".repeat(Math.max(0, obrk)) + "}".repeat(Math.max(0, ob));
-          try {
-            return JSON.parse(attempt);
-          } catch {
-            // fall through
-          }
+          try { return JSON.parse(attempt); } catch { /* fall through */ }
         }
-
         let brute = str.replace(/,\s*$/, "");
         for (let closers = 0; closers < 10; closers++) {
           brute += "}";
           try { return JSON.parse(brute); } catch { /* continue */ }
-          const bruteBracket = str.replace(/,\s*$/, "") + "]".repeat(closers + 1);
-          try { return JSON.parse(bruteBracket); } catch { /* continue */ }
         }
-
         throw new Error("Cannot repair truncated JSON");
       }
 
-      try {
-        return balanceAndParse(cleaned);
-      } catch (e) {
-        throw new Error(`Cannot parse JSON: ${e}`);
-      }
+      return balanceAndParse(cleaned);
     }
 
     let parsed;
@@ -211,14 +184,12 @@ serve(async (req) => {
     } catch (parseErr) {
       console.error("JSON extraction failed:", parseErr);
       return new Response(JSON.stringify({ error: "AI returned invalid JSON", raw: content.substring(0, 500) }), {
-        status: 422,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    return new Response(JSON.stringify({ schema: parsed }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(JSON.stringify({ schema: parsed, ai_provider: provider, ai_model: model }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("analyze-problem error:", e);
