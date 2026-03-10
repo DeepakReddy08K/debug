@@ -1,0 +1,1 @@
+ALTER TABLE public.runs ADD COLUMN IF NOT EXISTS ai_model_used text DEFAULT null;
