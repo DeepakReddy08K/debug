@@ -438,9 +438,6 @@ export async function callAIWithFailover(options: AIRequestOptions): Promise<AIF
       console.warn(`[AI Failover] ✗ ${provider.name} returned ${response.status}, trying next...`);
       continue;
     } catch (e) {
-      if (e instanceof Error && e.message.startsWith("AI request failed:")) {
-        throw e;
-      }
       errors.push(`${provider.name}: ${e instanceof Error ? e.message : "Unknown error"}`);
       console.warn(`[AI Failover] ✗ ${provider.name} threw error, trying next...`);
       continue;
