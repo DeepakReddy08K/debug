@@ -56,12 +56,18 @@ function getOpenRouterPaidModel(requestedModel?: string): string {
 }
 
 function getOpenRouterFreeModel(requestedModel?: string): string {
-  // Best free models for competitive programming on OpenRouter
-  // qwen3-coder is top-tier for code; deepseek-r1 for reasoning
   if (!requestedModel) return "qwen/qwen3-coder:free";
   if (requestedModel.includes("gemini-2.5-pro") || requestedModel.includes("gpt-5")) return "deepseek/deepseek-r1-0528:free";
   return "qwen/qwen3-coder:free";
 }
+
+// Backup free models to try if primary free model is rate-limited
+const FREE_MODEL_FALLBACKS = [
+  "qwen/qwen3-coder:free",
+  "deepseek/deepseek-r1-0528:free",
+  "microsoft/mai-ds-r1:free",
+  "google/gemma-3-27b-it:free",
+];
 
 // ─── Helper: Inject JSON instruction into system prompt ──────────
 // For providers/models that don't natively support response_format
@@ -249,12 +255,16 @@ async function callOpenRouter(options: AIRequestOptions, apiKey: string, modelFn
     messages = injectJsonInstruction(messages, options.response_format);
   }
 
-  // For models with thinking/reasoning (deepseek-r1, qwen3), strip thinking tags from response
+  // Cap max_tokens for OpenRouter to avoid 402 credit errors
+  // Paid models: cap at 8192; Free models: cap at 4096
+  const maxTokensCap = isFreeModel ? 4096 : 8192;
+  const cappedMaxTokens = options.max_tokens ? Math.min(options.max_tokens, maxTokensCap) : maxTokensCap;
+
   const body: Record<string, unknown> = {
     model,
     messages,
     temperature: options.temperature ?? 0.3,
-    ...(options.max_tokens ? { max_tokens: options.max_tokens } : {}),
+    max_tokens: cappedMaxTokens,
     ...(options.stream ? { stream: true } : {}),
     // Only pass response_format for paid models that support it
     ...(!isFreeModel && options.response_format ? { response_format: options.response_format } : {}),
@@ -387,12 +397,12 @@ const PROVIDERS: ProviderConfig[] = [
     getModel: getOpenRouterPaidModel,
     call: (opts, key) => callOpenRouter(opts, key, getOpenRouterPaidModel),
   },
-  {
-    name: "OpenRouter Free",
+  ...FREE_MODEL_FALLBACKS.map((freeModel, i) => ({
+    name: `OpenRouter Free${i > 0 ? ` (${freeModel.split("/")[0]})` : ""}`,
     keyEnvVar: "OPENROUTER_API_KEY",
-    getModel: getOpenRouterFreeModel,
-    call: (opts, key) => callOpenRouter(opts, key, getOpenRouterFreeModel),
-  },
+    getModel: () => freeModel,
+    call: (opts: AIRequestOptions, key: string) => callOpenRouter(opts, key, () => freeModel),
+  })),
 ];
 
 // ─── FAILOVER ENGINE ─────────────────────────────────────────────
