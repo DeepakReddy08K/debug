@@ -173,8 +173,9 @@ serve(async (req) => {
 
     const SYSTEM_PROMPT = getSystemPrompt(retryRound);
     const trimmedSchema = trimSchema(schema);
-    const roundLabel = retryRound > 0 ? ` (retry round ${retryRound} — generate DIFFERENT and HARDER tests)` : "";
-    const userPrompt = `Generate test cases for this problem${roundLabel}:\n\n${JSON.stringify(trimmedSchema, null, 2)}\n\nGenerate 8-10 diverse test cases. Each input must be a literal string. Keep N ≤ 200.${retryRound > 0 ? " Previous basic tests found no bug — try harder edge cases." : ""}`;
+    const roundLabel = retryRound > 0 ? ` (retry round ${retryRound} of 4 — generate COMPLETELY DIFFERENT and HARDER tests than all previous rounds)` : "";
+    const testCount = retryRound <= 1 ? "10-12" : "12-15";
+    const userPrompt = `Generate test cases for this problem${roundLabel}:\n\n${JSON.stringify(trimmedSchema, null, 2)}\n\nGenerate ${testCount} targeted test cases. Each input must be a LITERAL string with \\n for newlines. Keep N ≤ 200.\n\nMUST include:\n- Edge cases (n=1, n=2, empty)\n- Large numbers (10^9, 2^31-1, overflow-prone sums)\n- All-identical values (all 0s, all 1s, all max)\n- Special numbers (0, -1, primes, powers of 2)\n- Random varied inputs${retryRound > 0 ? `\n\nPrevious ${retryRound} round(s) found NO bug — you MUST generate completely novel test structures targeting different bug types.` : ""}`;
 
     const { response, provider, model } = await callAIWithFailover({
       messages: [
@@ -182,8 +183,8 @@ serve(async (req) => {
         { role: "user", content: userPrompt },
       ],
       model: "google/gemini-2.5-flash",
-      temperature: retryRound === 0 ? 0.4 : 0.7 + (retryRound * 0.1),
-      max_tokens: 4000,
+      temperature: Math.min(0.4 + (retryRound * 0.15), 1.0),
+      max_tokens: 6000,
     });
 
     const data = await response.json();
