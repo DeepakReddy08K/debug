@@ -397,12 +397,12 @@ const PROVIDERS: ProviderConfig[] = [
     getModel: getOpenRouterPaidModel,
     call: (opts, key) => callOpenRouter(opts, key, getOpenRouterPaidModel),
   },
-  {
-    name: "OpenRouter Free",
+  ...FREE_MODEL_FALLBACKS.map((freeModel, i) => ({
+    name: `OpenRouter Free${i > 0 ? ` (${freeModel.split("/")[0]})` : ""}`,
     keyEnvVar: "OPENROUTER_API_KEY",
-    getModel: getOpenRouterFreeModel,
-    call: (opts, key) => callOpenRouter(opts, key, getOpenRouterFreeModel),
-  },
+    getModel: () => freeModel,
+    call: (opts: AIRequestOptions, key: string) => callOpenRouter(opts, key, () => freeModel),
+  })),
 ];
 
 // ─── FAILOVER ENGINE ─────────────────────────────────────────────
