@@ -265,6 +265,8 @@ async function callOpenRouter(options: AIRequestOptions, apiKey: string, modelFn
     messages,
     temperature: options.temperature ?? 0.3,
     max_tokens: cappedMaxTokens,
+    // IMPORTANT: Never request streaming for paid models to allow body-level error detection
+    // For free models, respect the stream flag
     ...(options.stream ? { stream: true } : {}),
     // Only pass response_format for paid models that support it
     ...(!isFreeModel && options.response_format ? { response_format: options.response_format } : {}),
@@ -283,30 +285,150 @@ async function callOpenRouter(options: AIRequestOptions, apiKey: string, modelFn
 
   if (!resp.ok) return resp;
 
-  // For non-streaming free models, clean thinking tags from response
-  if (!options.stream && isFreeModel) {
+  // ─── CRITICAL: Detect hidden errors in 200 responses ──────────
+  // OpenRouter sometimes returns HTTP 200 with {"error": {...}} in body.
+  // We must detect this and convert to a proper error response so failover continues.
+
+  // For non-streaming responses, check body for errors
+  if (!options.stream) {
     const data = await resp.json();
-    let content = data.choices?.[0]?.message?.content || "";
-    // Strip <think>...</think> blocks from reasoning models
-    content = content.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    
+    // Check for OpenRouter error objects hidden in 200 responses
+    if (data.error) {
+      const errorCode = data.error.code || data.error.status || 502;
+      const errorMsg = data.error.message || JSON.stringify(data.error);
+      console.warn(`[OpenRouter] Hidden error in 200 response (model: ${model}): ${errorCode} - ${errorMsg}`);
+      return new Response(
+        JSON.stringify({ error: data.error }),
+        { status: typeof errorCode === "number" ? errorCode : 502, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    // Check for empty/missing choices (another failure mode)
+    if (!data.choices || data.choices.length === 0 || !data.choices[0]?.message?.content) {
+      console.warn(`[OpenRouter] Empty response from model: ${model}`);
+      return new Response(
+        JSON.stringify({ error: { message: "Empty response from model", code: 502 } }),
+        { status: 502, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    // For free models, clean thinking tags
+    if (isFreeModel) {
+      let content = data.choices[0].message.content || "";
+      content = content.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+      return new Response(
+        JSON.stringify({ ...data, choices: [{ ...data.choices[0], message: { ...data.choices[0].message, content } }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    // Paid model success — return reconstructed response
     return new Response(
-      JSON.stringify({ ...data, choices: [{ ...data.choices[0], message: { ...data.choices[0].message, content } }] }),
+      JSON.stringify(data),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
   }
 
-  // For streaming free models, we need to strip thinking tags on the fly
-  if (options.stream && isFreeModel && resp.body) {
+  // For streaming responses, peek at the first chunk to detect errors
+  if (options.stream && resp.body) {
     const reader = resp.body.getReader();
-    const encoder = new TextEncoder();
     const decoder = new TextDecoder();
+    const encoder = new TextEncoder();
+    
+    // Read first chunk to check for errors
+    const firstRead = await reader.read();
+    if (firstRead.done) {
+      console.warn(`[OpenRouter] Empty stream from model: ${model}`);
+      return new Response(
+        JSON.stringify({ error: { message: "Empty stream", code: 502 } }),
+        { status: 502, headers: { "Content-Type": "application/json" } },
+      );
+    }
 
+    const firstChunk = decoder.decode(firstRead.value, { stream: true });
+    
+    // Check if the first chunk is a JSON error (not SSE format)
+    if (!firstChunk.startsWith("data:") && !firstChunk.startsWith(":")) {
+      try {
+        const errorData = JSON.parse(firstChunk.trim());
+        if (errorData.error) {
+          const errorCode = errorData.error.code || errorData.error.status || 502;
+          console.warn(`[OpenRouter] Hidden stream error (model: ${model}): ${JSON.stringify(errorData.error).substring(0, 200)}`);
+          return new Response(
+            JSON.stringify({ error: errorData.error }),
+            { status: typeof errorCode === "number" ? errorCode : 502, headers: { "Content-Type": "application/json" } },
+          );
+        }
+      } catch {
+        // Not JSON, might be valid SSE without "data:" prefix — continue
+      }
+    }
+
+    // Check for error in SSE data lines
+    const sseLines = firstChunk.split("\n");
+    for (const line of sseLines) {
+      if (line.startsWith("data: ") && line.includes('"error"')) {
+        try {
+          const sseData = JSON.parse(line.slice(6).trim());
+          if (sseData.error) {
+            const errorCode = sseData.error.code || sseData.error.status || 502;
+            console.warn(`[OpenRouter] SSE error (model: ${model}): ${JSON.stringify(sseData.error).substring(0, 200)}`);
+            return new Response(
+              JSON.stringify({ error: sseData.error }),
+              { status: typeof errorCode === "number" ? errorCode : 502, headers: { "Content-Type": "application/json" } },
+            );
+          }
+        } catch { /* not an error line */ }
+      }
+    }
+
+    // First chunk is valid — create a new stream that starts with it
+    let inThinking = false;
     const stream = new ReadableStream({
       async start(controller) {
-        let buffer = "";
-        let inThinking = false;
+        // Process the first chunk we already read
+        let buffer = firstChunk;
+        
+        const processBuffer = () => {
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === "[DONE]") {
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              continue;
+            }
+            if (!jsonStr) continue;
+            try {
+              const parsed = JSON.parse(jsonStr);
+              let content = parsed.choices?.[0]?.delta?.content || "";
+              
+              if (isFreeModel) {
+                // Track <think> blocks and suppress them
+                if (content.includes("<think>")) { inThinking = true; content = content.replace(/<think>[\s\S]*/g, ""); }
+                if (inThinking) {
+                  if (content.includes("</think>")) {
+                    inThinking = false;
+                    content = content.replace(/[\s\S]*<\/think>/g, "");
+                  } else {
+                    continue;
+                  }
+                }
+              }
+              
+              if (content) {
+                const chunk = { choices: [{ delta: { content }, index: 0 }] };
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+              }
+            } catch { /* skip */ }
+          }
+        };
 
         try {
+          processBuffer(); // Process first chunk
+          
           while (true) {
             const { done, value } = await reader.read();
             if (done) {
@@ -315,38 +437,7 @@ async function callOpenRouter(options: AIRequestOptions, apiKey: string, modelFn
               break;
             }
             buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
-
-            for (const line of lines) {
-              if (!line.startsWith("data: ")) continue;
-              const jsonStr = line.slice(6).trim();
-              if (jsonStr === "[DONE]") {
-                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-                continue;
-              }
-              if (!jsonStr) continue;
-              try {
-                const parsed = JSON.parse(jsonStr);
-                let content = parsed.choices?.[0]?.delta?.content || "";
-                
-                // Track <think> blocks and suppress them
-                if (content.includes("<think>")) { inThinking = true; content = content.replace(/<think>[\s\S]*/g, ""); }
-                if (inThinking) {
-                  if (content.includes("</think>")) {
-                    inThinking = false;
-                    content = content.replace(/[\s\S]*<\/think>/g, "");
-                  } else {
-                    continue; // skip thinking content
-                  }
-                }
-                
-                if (content) {
-                  const chunk = { choices: [{ delta: { content }, index: 0 }] };
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
-                }
-              } catch { /* skip */ }
-            }
+            processBuffer();
           }
         } catch (e) {
           controller.error(e);
