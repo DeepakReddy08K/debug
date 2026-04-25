@@ -1,20 +1,25 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// Allowed origins — restrict in production
-const ALLOWED_ORIGINS = [
+// Allowed origins — support published app, Lovable previews, and local dev.
+const EXACT_ALLOWED_ORIGINS = new Set([
   "https://debugforcompetitiveprogramming.lovable.app",
   "https://id-preview--7d0d176c-48bf-4107-ac98-634944c0e677.lovable.app",
   "http://localhost:5173",
   "http://localhost:8080",
+]);
+
+const ALLOWED_ORIGIN_PATTERNS = [
+  /^https:\/\/[a-z0-9-]+\.lovableproject\.com$/,
+  /^https:\/\/([a-z0-9-]+--)?7d0d176c-48bf-4107-ac98-634944c0e677\.lovable\.app$/,
 ];
 
 function getAllowedOrigin(req: Request): string {
   const origin = req.headers.get("Origin") || "";
-  if (ALLOWED_ORIGINS.some(o => origin.startsWith(o))) {
+  if (EXACT_ALLOWED_ORIGINS.has(origin) || ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin))) {
     return origin;
   }
-  // For non-browser requests (e.g., Supabase SDK), allow through
-  return ALLOWED_ORIGINS[0];
+  // For non-browser requests (server-side tests/tools), return the published app origin.
+  return "https://debugforcompetitiveprogramming.lovable.app";
 }
 
 export function getCorsHeaders(req: Request): Record<string, string> {
@@ -39,7 +44,7 @@ export const corsHeaders = {
 
 export interface AuthResult {
   userId: string;
-  supabase: ReturnType<typeof createClient>;
+  supabase: any;
 }
 
 /**
