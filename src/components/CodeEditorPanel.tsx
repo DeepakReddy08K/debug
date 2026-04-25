@@ -1,5 +1,4 @@
 import Editor from "@monaco-editor/react";
-import type { editor } from "monaco-editor";
 import { useRef } from "react";
 
 interface CodeEditorPanelProps {
@@ -8,6 +7,12 @@ interface CodeEditorPanelProps {
   value: string;
   onChange: (value: string) => void;
 }
+
+type MonacoEditorInstance = {
+  updateOptions: (options: Record<string, unknown>) => void;
+  onDidFocusEditorText: (listener: () => void) => unknown;
+  onDidBlurEditorText: (listener: () => void) => unknown;
+};
 
 const languageMap: Record<string, string> = {
   cpp: "cpp",
@@ -18,9 +23,9 @@ const languageMap: Record<string, string> = {
 };
 
 export default function CodeEditorPanel({ label, language, value, onChange }: CodeEditorPanelProps) {
-  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const editorRef = useRef<MonacoEditorInstance | null>(null);
 
-  const handleEditorMount = (ed: editor.IStandaloneCodeEditor) => {
+  const handleEditorMount = (ed: MonacoEditorInstance) => {
     editorRef.current = ed;
 
     // Keep native Monaco clipboard behavior (Ctrl/Cmd + C/V/X/A)
