@@ -44,7 +44,7 @@ export const corsHeaders = {
 
 export interface AuthResult {
   userId: string;
-  supabase: ReturnType<typeof createClient>;
+  supabase: any;
 }
 
 /**
