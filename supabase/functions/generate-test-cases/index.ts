@@ -115,20 +115,59 @@ Generate 15 EXTREME adversarial test cases. Maximum creativity required.`;
 function extractJsonFromResponse(response: string): any {
   let cleaned = response.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
   try { return JSON.parse(cleaned); } catch { /* continue */ }
+
+  // Walk objects inside test_cases array; collect complete ones, and try to repair the last (truncated) one.
   const testCasesMatch = cleaned.match(/"test_cases"\s*:\s*\[/);
   if (testCasesMatch && testCasesMatch.index !== undefined) {
     const arrayStart = testCasesMatch.index + testCasesMatch[0].length;
     const completeObjects: string[] = [];
-    let depth = 0, objStart = -1;
+    let depth = 0, objStart = -1, inStr = false, esc = false;
     for (let i = arrayStart; i < cleaned.length; i++) {
       const ch = cleaned[i];
+      if (inStr) {
+        if (esc) { esc = false; }
+        else if (ch === '\\') { esc = true; }
+        else if (ch === '"') { inStr = false; }
+        continue;
+      }
+      if (ch === '"') { inStr = true; continue; }
       if (ch === '{') { if (depth === 0) objStart = i; depth++; }
-      else if (ch === '}') { depth--; if (depth === 0 && objStart !== -1) { const obj = cleaned.substring(objStart, i + 1); try { JSON.parse(obj); completeObjects.push(obj); } catch { /* skip */ } objStart = -1; } }
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0 && objStart !== -1) {
+          const obj = cleaned.substring(objStart, i + 1);
+          try { JSON.parse(obj); completeObjects.push(obj); } catch { /* skip */ }
+          objStart = -1;
+        }
+      }
     }
+
+    // Attempt to salvage a truncated trailing object.
+    if (objStart !== -1 && depth > 0) {
+      let tail = cleaned.substring(objStart);
+      if (inStr) tail += '"'; // close open string
+      // Count remaining unclosed braces
+      let openBraces = 0, openBrackets = 0, s = false, e = false;
+      for (const ch of tail) {
+        if (s) { if (e) e = false; else if (ch === '\\') e = true; else if (ch === '"') s = false; continue; }
+        if (ch === '"') { s = true; continue; }
+        if (ch === '{') openBraces++; else if (ch === '}') openBraces--;
+        else if (ch === '[') openBrackets++; else if (ch === ']') openBrackets--;
+      }
+      // Strip trailing partial key/value after last comma to keep valid structure
+      const lastComma = tail.lastIndexOf(',');
+      const lastClose = Math.max(tail.lastIndexOf('}'), tail.lastIndexOf(']'));
+      if (lastComma > lastClose) tail = tail.substring(0, lastComma);
+      while (openBrackets-- > 0) tail += ']';
+      while (openBraces-- > 0) tail += '}';
+      try { JSON.parse(tail); completeObjects.push(tail); } catch { /* give up on this one */ }
+    }
+
     if (completeObjects.length > 0) {
       return JSON.parse(`{"test_cases":[${completeObjects.join(",")}],"total_count":${completeObjects.length},"generation_notes":"Recovered from truncated response"}`);
     }
   }
+
   const jsonStart = cleaned.search(/[\{\[]/);
   const jsonEnd = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
   if (jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON found");
